@@ -1,4 +1,5 @@
 CC ?= cc
+AR ?= ar
 CPPFLAGS += -Iinclude
 CFLAGS ?= -std=c11 -D_POSIX_C_SOURCE=200809L
 CFLAGS += -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wformat=2 -Werror
@@ -6,18 +7,28 @@ LDFLAGS ?=
 LDLIBS ?=
 
 BUILD_DIR ?= build
-CORE_SOURCES := $(wildcard src/**/*.c src/*.c)
+LIBRARY := $(BUILD_DIR)/librudp.a
+CORE_SOURCES := $(wildcard src/rudp/*.c src/common/*.c)
+CORE_OBJECTS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(CORE_SOURCES))
+CLI := $(BUILD_DIR)/rudp
+TCP_REF := $(BUILD_DIR)/tcp_ref
+UDP_REF := $(BUILD_DIR)/udp_ref
 TEST_SOURCES := $(wildcard tests/**/*.c tests/*.c)
-ALL_OBJECTS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(CORE_SOURCES) $(TEST_SOURCES))
+TEST_OBJECTS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(TEST_SOURCES))
+ALL_OBJECTS := $(CORE_OBJECTS) $(TEST_OBJECTS)
 
-.PHONY: all configure build test integration sanitize format format-check lint clean help
+.PHONY: all configure lib cli tcp_ref udp_ref build test integration sanitize format format-check lint clean help
 
-all: build
+all: lib cli tcp_ref udp_ref
 
 help:
 	@printf '%s\n' \
 	  'make configure   - verify project prerequisites' \
-	  'make build       - build available C sources' \
+	  'make all         - build the library and command-line stubs' \
+	  'make lib         - build the RUDP static library' \
+	  'make cli         - build the RUDP command-line stub' \
+	  'make tcp_ref     - build the TCP reference stub' \
+	  'make udp_ref     - build the UDP reference stub' \
 	  'make test        - run deterministic unit tests' \
 	  'make integration - run bounded live-socket tests' \
 	  'make sanitize    - run sanitizer tests' \
@@ -27,9 +38,31 @@ help:
 configure:
 	@./tools/bootstrap_ubuntu.sh --check
 
-build: $(ALL_OBJECTS)
-	@mkdir -p $(BUILD_DIR)
-	@echo 'Build scaffold ready; no product sources have been added yet.'
+build: all
+
+lib: $(LIBRARY)
+
+cli: $(CLI)
+
+tcp_ref: $(TCP_REF)
+
+udp_ref: $(UDP_REF)
+
+$(LIBRARY): $(CORE_OBJECTS)
+	@mkdir -p $(dir $@)
+	$(AR) rcs $@ $^
+
+$(CLI): src/cli/rudp.c $(LIBRARY)
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LIBRARY) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(TCP_REF): src/tcp_ref/tcp_ref.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@
+
+$(UDP_REF): src/udp_ref/udp_ref.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@
 
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -37,10 +70,10 @@ $(BUILD_DIR)/%.o: %.c
 
 -include $(ALL_OBJECTS:.o=.d)
 
-test: build
+test: all
 	@./tools/run_tests.sh unit
 
-integration: build
+integration: all
 	@./tools/run_tests.sh integration
 
 sanitize:
@@ -54,7 +87,7 @@ format-check:
 	@command -v clang-format >/dev/null || { echo 'clang-format is required; run tools/bootstrap_ubuntu.sh'; exit 1; }
 	@files=$$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print 2>/dev/null); if [ -n "$$files" ]; then clang-format --dry-run --Werror $$files; fi
 
-lint: build
+lint: all
 	@command -v cppcheck >/dev/null || { echo 'cppcheck is required; run tools/bootstrap_ubuntu.sh'; exit 1; }
 	@files=$$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print 2>/dev/null); \
 	if [ -n "$$files" ]; then cppcheck --enable=warning,style,performance,portability --error-exitcode=1 $$files; else echo 'No C sources exist yet; static-analysis scaffold check passed.'; fi

@@ -48,15 +48,15 @@ sanitize:
 
 format:
 	@command -v clang-format >/dev/null || { echo 'clang-format is required; run tools/bootstrap_ubuntu.sh'; exit 1; }
-	@files=$$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print); if [ -n "$$files" ]; then clang-format -i $$files; fi
+	@files=$$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print 2>/dev/null); if [ -n "$$files" ]; then clang-format -i $$files; fi
 
 format-check:
 	@command -v clang-format >/dev/null || { echo 'clang-format is required; run tools/bootstrap_ubuntu.sh'; exit 1; }
-	@files=$$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print); if [ -n "$$files" ]; then clang-format --dry-run --Werror $$files; fi
+	@files=$$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print 2>/dev/null); if [ -n "$$files" ]; then clang-format --dry-run --Werror $$files; fi
 
 lint: build
 	@command -v cppcheck >/dev/null || { echo 'cppcheck is required; run tools/bootstrap_ubuntu.sh'; exit 1; }
-	@files=$$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print); \
+	@files=$$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print 2>/dev/null); \
 	if [ -n "$$files" ]; then cppcheck --enable=warning,style,performance,portability --error-exitcode=1 $$files; else echo 'No C sources exist yet; static-analysis scaffold check passed.'; fi
 
 clean:

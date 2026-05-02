@@ -24,12 +24,6 @@ make configure
 make test
 ```
 
-The repository's plans are the source of truth:
-
-- `PLAN.md` — scope, deliverables, and completion criteria
-- `TASKS.md` — protocol contract and ordered implementation checkpoints
-- `BENCHMARKING.md` — experiment topology, workloads, metrics, and statistics
-
-Do not start benchmark work before the implementation reaches the relevant
-checkpoint in `TASKS.md`. Benchmark privileges are not needed for the normal
+Benchmark-specific tooling and documentation will be added only when the
+implementation requires it. Benchmark privileges are not needed for the normal
 build and test commands.

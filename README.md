@@ -27,3 +27,7 @@ make test
 Benchmark-specific tooling and documentation will be added only when the
 implementation requires it. Benchmark privileges are not needed for the normal
 build and test commands.
+
+Current local and benchmark gate status is maintained in
+[docs/readiness.md](docs/readiness.md). The benchmark topology safety check is
+documented in [docs/benchmark-preflight.md](docs/benchmark-preflight.md).

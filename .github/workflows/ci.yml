@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format cppcheck
+      - name: Build
+        run: make build
+      - name: Unit tests
+        run: make test
+      - name: Integration tests
+        run: make integration
+      - name: Formatting check
+        run: make format-check
+      - name: Static analysis
+        run: make lint

@@ -1,0 +1,24 @@
+# Build products
+/build/
+/bin/
+*.o
+*.a
+*.so
+
+# Local tooling and Python environments
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Temporary transfer and benchmark files
+*.rudp-partial
+*.tmp
+/tmp/
+/results/_work/
+
+# Local editor/OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -2,10 +2,11 @@
 set -euo pipefail
 
 kind="${1:?test kind required}"
+build_dir="${BUILD_DIR:-build}"
 case "$kind" in
-  unit) pattern='tests/unit/test_*' ;;
-  integration) pattern='tests/integration/test_*' ;;
-  sanitize) pattern='tests/unit/test_*' ;;
+  unit) pattern="$build_dir/tests/unit/test_*" ;;
+  integration) pattern="$build_dir/tests/integration/test_*" ;;
+  sanitize) pattern="$build_dir/tests/unit/test_*" ;;
   *) echo "unknown test kind: $kind" >&2; exit 2 ;;
 esac
 

@@ -20,6 +20,7 @@ struct rudp_socket {
 };
 
 enum rudp_socket_error rudp_socket_open(struct rudp_socket *socket, uint16_t port);
+enum rudp_socket_error rudp_socket_local_port(const struct rudp_socket *socket, uint16_t *port);
 void rudp_socket_close(struct rudp_socket *socket);
 
 int rudp_socket_send_packet(void *context, const struct rudp_peer *peer,

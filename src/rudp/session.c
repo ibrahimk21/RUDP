@@ -191,6 +191,12 @@ static enum rudp_session_error receive_sender(struct rudp_session *session,
         session->error = RUDP_SESSION_OK;
         return RUDP_SESSION_OK;
     }
+    if (session->state == RUDP_SESSION_ESTABLISHED && packet->type == RUDP_PACKET_SYN_ACK &&
+        packet->client_nonce == session->client_nonce &&
+        packet->server_nonce == session->server_nonce &&
+        metadata_equal(&session->metadata, packet)) {
+        return send_open(session);
+    }
     return RUDP_SESSION_ERR_STATE;
 }
 
@@ -230,6 +236,16 @@ static enum rudp_session_error receive_receiver(struct rudp_session *session,
         }
         session->state = RUDP_SESSION_ESTABLISHED;
         session->error = RUDP_SESSION_OK;
+        return send_open_ack(session);
+    }
+    if (session->state == RUDP_SESSION_ESTABLISHED && packet->type == RUDP_PACKET_SYN &&
+        packet->client_nonce == session->client_nonce && packet->server_nonce == 0U &&
+        metadata_equal(&session->metadata, packet)) {
+        return send_syn_ack(session);
+    }
+    if (session->state == RUDP_SESSION_ESTABLISHED && packet->type == RUDP_PACKET_OPEN &&
+        packet->client_nonce == session->client_nonce &&
+        packet->server_nonce == session->server_nonce) {
         return send_open_ack(session);
     }
     return RUDP_SESSION_ERR_STATE;

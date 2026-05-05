@@ -52,6 +52,22 @@ enum rudp_socket_error rudp_socket_open(struct rudp_socket *endpoint, uint16_t p
     return RUDP_SOCKET_OK;
 }
 
+enum rudp_socket_error rudp_socket_local_port(const struct rudp_socket *socket, uint16_t *port)
+{
+    struct sockaddr_in address;
+    socklen_t address_length = sizeof(address);
+
+    if (socket == NULL || port == NULL || socket->fd < 0) {
+        return RUDP_SOCKET_ERR_ARGUMENT;
+    }
+    if (getsockname(socket->fd, (struct sockaddr *)&address, &address_length) < 0 ||
+        address_length != sizeof(address) || address.sin_family != AF_INET) {
+        return RUDP_SOCKET_ERR_SYSTEM;
+    }
+    *port = ntohs(address.sin_port);
+    return RUDP_SOCKET_OK;
+}
+
 void rudp_socket_close(struct rudp_socket *socket)
 {
     if (socket != NULL && socket->fd >= 0) {

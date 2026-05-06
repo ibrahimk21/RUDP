@@ -157,6 +157,40 @@ static void test_setup_duplicates_and_peer_binding(void)
     assert(receiver.setup_deadline_ms == pending_deadline);
 }
 
+static void test_pending_duplicate_does_not_reset_deadline(void)
+{
+    struct fake_context sender_context = {.nonce = 10U};
+    struct fake_context receiver_context = {.nonce = 20U};
+    struct rudp_session sender;
+    struct rudp_session receiver;
+    const struct rudp_peer sender_peer = peer(40001U);
+    const struct rudp_peer receiver_peer = peer(40002U);
+    const struct rudp_clock sender_clock = clock_for(&sender_context);
+    const struct rudp_clock receiver_clock = clock_for(&receiver_context);
+    const struct rudp_random sender_random = random_for(&sender_context);
+    const struct rudp_random receiver_random = random_for(&receiver_context);
+    const struct rudp_session_io sender_io = io_for(&sender_context);
+    const struct rudp_session_io receiver_io = io_for(&receiver_context);
+    const struct rudp_transfer_metadata transfer = metadata();
+    uint64_t deadline;
+    uint64_t retry;
+
+    assert(rudp_receiver_listen(&receiver, &receiver_clock, &receiver_random, &receiver_io) ==
+           RUDP_SESSION_OK);
+    assert(rudp_sender_start(&sender, &sender_clock, &sender_random, &sender_io, &receiver_peer,
+                             &transfer) == RUDP_SESSION_OK);
+    assert(rudp_session_receive(&receiver, &sender_peer, &sender_context.sent[0]) ==
+           RUDP_SESSION_OK);
+    assert(receiver.state == RUDP_SESSION_PENDING);
+    deadline = receiver.setup_deadline_ms;
+    retry = receiver.next_retry_ms;
+    assert(rudp_session_receive(&receiver, &sender_peer, &sender_context.sent[0]) ==
+           RUDP_SESSION_OK);
+    assert(receiver_context.sent_count == 2U);
+    assert(receiver.setup_deadline_ms == deadline);
+    assert(receiver.next_retry_ms == retry);
+}
+
 static void test_retries_timeout_and_failures(void)
 {
     struct fake_context context = {.nonce = 5U};
@@ -170,6 +204,19 @@ static void test_retries_timeout_and_failures(void)
     assert(rudp_sender_start(&sender, &clock, &random, &io, &destination, &transfer) ==
            RUDP_SESSION_OK);
     assert(sender.next_retry_ms == 1000U);
+    {
+        struct rudp_packet wrong_session = {
+            .type = RUDP_PACKET_SYN_ACK,
+            .client_nonce = sender.client_nonce + 1U,
+            .server_nonce = 9U,
+            .transfer_length = transfer.length,
+        };
+
+        memcpy(wrong_session.digest, transfer.digest, sizeof(wrong_session.digest));
+        assert(rudp_session_receive(&sender, &destination, &wrong_session) ==
+               RUDP_SESSION_ERR_PACKET);
+        assert(sender.state == RUDP_SESSION_SYN_SENT);
+    }
     context.now = 1000U;
     assert(rudp_session_tick(&sender) == RUDP_SESSION_OK);
     assert(context.sent_count == 2U);
@@ -238,6 +285,7 @@ static void test_restart_abort_and_limits(void)
 int main(void)
 {
     test_setup_duplicates_and_peer_binding();
+    test_pending_duplicate_does_not_reset_deadline();
     test_retries_timeout_and_failures();
     test_restart_abort_and_limits();
     puts("session tests passed");

@@ -71,6 +71,18 @@ bool rudp_receive_window_consume(struct rudp_receive_window *window, uint32_t se
     return true;
 }
 
+void rudp_receive_window_make_ack(const struct rudp_receive_window *window, uint64_t client_nonce,
+                                  uint64_t server_nonce, struct rudp_packet *packet)
+{
+    memset(packet, 0, sizeof(*packet));
+    packet->type = RUDP_PACKET_ACK;
+    packet->client_nonce = client_nonce;
+    packet->server_nonce = server_nonce;
+    packet->ack = window->expected;
+    packet->receive_limit = rudp_receive_window_limit(window);
+    packet->sack_count = rudp_receive_window_sacks(window, packet->sacks);
+}
+
 uint8_t rudp_receive_window_sacks(const struct rudp_receive_window *window,
                                   struct rudp_sack_block blocks[RUDP_MAX_SACK_BLOCKS])
 {

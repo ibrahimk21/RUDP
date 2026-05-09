@@ -29,6 +29,8 @@ bool rudp_receive_window_insert(struct rudp_receive_window *window, uint32_t seq
                                 uint16_t length);
 uint32_t rudp_receive_window_limit(const struct rudp_receive_window *window);
 bool rudp_receive_window_consume(struct rudp_receive_window *window, uint32_t sequence);
+void rudp_receive_window_make_ack(const struct rudp_receive_window *window, uint64_t client_nonce,
+                                  uint64_t server_nonce, struct rudp_packet *packet);
 uint8_t rudp_receive_window_sacks(const struct rudp_receive_window *window,
                                   struct rudp_sack_block blocks[RUDP_MAX_SACK_BLOCKS]);
 

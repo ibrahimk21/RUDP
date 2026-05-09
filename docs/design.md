@@ -45,3 +45,24 @@ caller as `RUDP_SESSION_ERR_PACKET` or `RUDP_SESSION_ERR_STATE`; they do not
 advance setup state. A peer mismatch returns `RUDP_SESSION_ERR_PEER`. Local
 randomness, send, and timeout failures are terminal. No application bytes are
 accepted in Phase 2, so there is no application backpressure yet.
+
+## Phase 3 stop-and-wait transfer
+
+The stop-and-wait layer is constructed only after the session handshake has
+established both nonces and bound the peer. It retains one DATA packet at a
+time and treats ACK `N + 1` as confirmation of DATA sequence `N`. A duplicate
+or old DATA packet is not delivered again; the receiver replies with its
+current cumulative ACK.
+
+DATA retries use a fixed one-second timer in this phase. A sender or receiver
+fails after 120 seconds without progress, and every transfer has an independent
+30-minute deadline. FIN uses the same retained-packet model but a separate
+30-second closing deadline and 1/2/4-second retry schedule. A sender that
+cannot confirm FIN before that closing deadline reports
+`RUDP_TRANSFER_ERR_COMPLETION_UNKNOWN`, rather than success.
+
+The receiver writes through an injected sink. Its `finish` operation is the
+output-validation boundary for this phase; Phase 6 supplies file handling and
+the MD5 implementation. A verified FIN enters a 35-second linger state, where
+duplicate matching FIN packets receive another FIN_ACK without committing the
+sink a second time.

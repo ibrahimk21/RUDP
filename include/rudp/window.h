@@ -28,7 +28,29 @@ void rudp_receive_window_init(struct rudp_receive_window *window, uint32_t initi
 bool rudp_receive_window_insert(struct rudp_receive_window *window, uint32_t sequence,
                                 uint16_t length);
 uint32_t rudp_receive_window_limit(const struct rudp_receive_window *window);
+bool rudp_receive_window_consume(struct rudp_receive_window *window, uint32_t sequence);
 uint8_t rudp_receive_window_sacks(const struct rudp_receive_window *window,
                                   struct rudp_sack_block blocks[RUDP_MAX_SACK_BLOCKS]);
+
+struct rudp_send_slot {
+    uint32_t sequence;
+    uint8_t higher_sack_evidence;
+    bool in_use;
+    bool sacked;
+    bool fast_retransmitted;
+};
+
+struct rudp_send_scoreboard {
+    uint32_t cumulative_ack;
+    uint32_t receive_limit;
+    struct rudp_send_slot slots[RUDP_WINDOW_CAPACITY];
+};
+
+void rudp_send_scoreboard_init(struct rudp_send_scoreboard *scoreboard, uint32_t initial_ack,
+                               uint32_t receive_limit);
+bool rudp_send_scoreboard_track(struct rudp_send_scoreboard *scoreboard, uint32_t sequence);
+bool rudp_send_scoreboard_apply_ack(struct rudp_send_scoreboard *scoreboard, uint32_t ack,
+                                    const struct rudp_sack_block *sacks, uint8_t sack_count,
+                                    uint32_t *fast_retransmit_sequence);
 
 #endif

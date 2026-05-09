@@ -55,6 +55,22 @@ uint32_t rudp_receive_window_limit(const struct rudp_receive_window *window)
     return window->consumed + RUDP_WINDOW_CAPACITY;
 }
 
+bool rudp_receive_window_consume(struct rudp_receive_window *window, uint32_t sequence)
+{
+    struct rudp_receive_slot *slot;
+
+    if (sequence != window->consumed) {
+        return false;
+    }
+    slot = &window->slots[sequence % RUDP_WINDOW_CAPACITY];
+    if (!slot->present || slot->sequence != sequence) {
+        return false;
+    }
+    slot->present = false;
+    window->consumed += 1U;
+    return true;
+}
+
 uint8_t rudp_receive_window_sacks(const struct rudp_receive_window *window,
                                   struct rudp_sack_block blocks[RUDP_MAX_SACK_BLOCKS])
 {
@@ -80,4 +96,74 @@ uint8_t rudp_receive_window_sacks(const struct rudp_receive_window *window,
         }
     }
     return count;
+}
+
+void rudp_send_scoreboard_init(struct rudp_send_scoreboard *scoreboard, uint32_t initial_ack,
+                               uint32_t receive_limit)
+{
+    memset(scoreboard, 0, sizeof(*scoreboard));
+    scoreboard->cumulative_ack = initial_ack;
+    scoreboard->receive_limit = receive_limit;
+}
+
+bool rudp_send_scoreboard_track(struct rudp_send_scoreboard *scoreboard, uint32_t sequence)
+{
+    struct rudp_send_slot *slot = &scoreboard->slots[sequence % RUDP_WINDOW_CAPACITY];
+
+    if (!rudp_seq_in_window(sequence, scoreboard->cumulative_ack,
+                            scoreboard->cumulative_ack + RUDP_WINDOW_CAPACITY) ||
+        slot->in_use) {
+        return false;
+    }
+    slot->sequence = sequence;
+    slot->in_use = true;
+    return true;
+}
+
+bool rudp_send_scoreboard_apply_ack(struct rudp_send_scoreboard *scoreboard, uint32_t ack,
+                                    const struct rudp_sack_block *sacks, uint8_t sack_count,
+                                    uint32_t *fast_retransmit_sequence)
+{
+    uint32_t sequence;
+    uint8_t index;
+    bool changed = false;
+
+    if (sack_count > RUDP_MAX_SACK_BLOCKS ||
+        !rudp_seq_in_window(ack, scoreboard->cumulative_ack, scoreboard->receive_limit + 1U)) {
+        return false;
+    }
+    if (rudp_seq_after(ack, scoreboard->cumulative_ack)) {
+        for (sequence = scoreboard->cumulative_ack; sequence != ack; ++sequence) {
+            scoreboard->slots[sequence % RUDP_WINDOW_CAPACITY].in_use = false;
+        }
+        scoreboard->cumulative_ack = ack;
+        changed = true;
+    }
+    for (index = 0U; index < sack_count; ++index) {
+        for (sequence = sacks[index].start; sequence != sacks[index].end; ++sequence) {
+            struct rudp_send_slot *slot = &scoreboard->slots[sequence % RUDP_WINDOW_CAPACITY];
+            uint32_t lower;
+
+            if (!slot->in_use || slot->sequence != sequence) {
+                continue;
+            }
+            if (slot->sacked) {
+                continue;
+            }
+            slot->sacked = true;
+            changed = true;
+            for (lower = scoreboard->cumulative_ack; lower != sequence; ++lower) {
+                struct rudp_send_slot *hole = &scoreboard->slots[lower % RUDP_WINDOW_CAPACITY];
+                if (hole->in_use && !hole->sacked && hole->sequence == lower &&
+                    hole->higher_sack_evidence < 3U) {
+                    hole->higher_sack_evidence += 1U;
+                    if (hole->higher_sack_evidence == 3U && !hole->fast_retransmitted) {
+                        hole->fast_retransmitted = true;
+                        *fast_retransmit_sequence = lower;
+                    }
+                }
+            }
+        }
+    }
+    return changed;
 }

@@ -24,6 +24,26 @@ int main(void)
     assert(rudp_receive_window_insert(&window, UINT32_MAX, 1U));
     assert(window.expected == 2U);
     assert(!rudp_receive_window_insert(&window, window.consumed + RUDP_WINDOW_CAPACITY, 1U));
+    assert(rudp_receive_window_consume(&window, UINT32_MAX - 1U));
+        assert(rudp_receive_window_limit(&window) == UINT32_MAX + RUDP_WINDOW_CAPACITY);
+
+    {
+        struct rudp_send_scoreboard scoreboard;
+        const struct rudp_sack_block first = {.start = 1U, .end = 2U};
+        const struct rudp_sack_block second = {.start = 2U, .end = 3U};
+        const struct rudp_sack_block third = {.start = 3U, .end = 4U};
+        uint32_t retransmit = UINT32_MAX;
+
+        rudp_send_scoreboard_init(&scoreboard, 0U, 8U);
+        assert(rudp_send_scoreboard_track(&scoreboard, 0U));
+        assert(rudp_send_scoreboard_track(&scoreboard, 1U));
+        assert(rudp_send_scoreboard_track(&scoreboard, 2U));
+        assert(rudp_send_scoreboard_track(&scoreboard, 3U));
+        assert(rudp_send_scoreboard_apply_ack(&scoreboard, 0U, &first, 1U, &retransmit));
+        assert(rudp_send_scoreboard_apply_ack(&scoreboard, 0U, &second, 1U, &retransmit));
+        assert(rudp_send_scoreboard_apply_ack(&scoreboard, 0U, &third, 1U, &retransmit));
+        assert(retransmit == 0U);
+    }
     puts("window tests passed");
     return 0;
 }

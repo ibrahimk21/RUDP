@@ -79,7 +79,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 - [x] Inspect existing setup; initialize Git only if absent. Create the PLAN.md layout, Make targets `all`, `lib`, `cli`, `tcp_ref`, `udp_ref`, `test`, `integration`, `sanitize`, `clean`, and build-only ignores.
 - [x] Confirm Linux C11 toolchain, Make, Python with matplotlib/pandas/numpy, and a licensed self-contained MD5 source. Benchmark dependencies: iproute2/tc, network namespaces/veth, netem including gemodel/seed, HTB, ethtool, tcpdump, time, and CUBIC/BBR availability. Record versions.
 - [x] Preflight the isolated topology from BENCHMARKING.md including privileges, pacing/offload controls and cleanup. Never alter the host's default qdisc or sysctls.
-- [ ] Record `correctness_ready` and `benchmark_ready` separately. If WSL2 lacks required kernel facilities, continue deterministic/local work and document a compatible Linux VM/host; do not substitute a UDP proxy for TCP comparisons.
+- [x] Record `correctness_ready` and `benchmark_ready` separately. If WSL2 lacks required kernel facilities, continue deterministic/local work and document a compatible Linux VM/host; do not substitute a UDP proxy for TCP comparisons.
 
 **Checkpoint:** stubs build; dependency report states which later gates are available. Missing benchmark facilities block Phase 8 experiments, not Phases 1-7 local work.
 

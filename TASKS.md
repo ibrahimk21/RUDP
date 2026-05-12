@@ -85,7 +85,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 
 ## Phase 1 — Codec
 
-- [ ] Implement header/control payload codecs and checksum from the contract, bounded parsing, error codes, and independent golden vectors.
+- [x] Implement header/control payload codecs and checksum from the contract, bounded parsing, error codes, and independent golden vectors.
 - [ ] Test all types, 0/1/4 SACK blocks, malformed lengths/counts/ranges, endian/alignment cases, odd checksums, corruption, and bounded randomized parser inputs under ASan/UBSan.
 
 **Checkpoint:** byte-level vectors and sanitizer tests pass; malformed inputs cannot mutate transport state.

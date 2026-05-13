@@ -282,12 +282,57 @@ static void test_restart_abort_and_limits(void)
            RUDP_SESSION_ERR_PACKET);
 }
 
+static void test_busy_receiver_and_setup_failures(void)
+{
+    struct fake_context sender_context = {.nonce = 10U};
+    struct fake_context receiver_context = {.nonce = 20U};
+    struct rudp_session sender;
+    struct rudp_session receiver;
+    const struct rudp_peer sender_peer = peer(40001U);
+    const struct rudp_peer other_peer = peer(40003U);
+    const struct rudp_peer receiver_peer = peer(40002U);
+    const struct rudp_clock sender_clock = clock_for(&sender_context);
+    const struct rudp_clock receiver_clock = clock_for(&receiver_context);
+    const struct rudp_random sender_random = random_for(&sender_context);
+    const struct rudp_random receiver_random = random_for(&receiver_context);
+    const struct rudp_session_io sender_io = io_for(&sender_context);
+    const struct rudp_session_io receiver_io = io_for(&receiver_context);
+    struct rudp_transfer_metadata transfer = metadata();
+
+    assert(rudp_receiver_listen(&receiver, &receiver_clock, &receiver_random, &receiver_io) ==
+           RUDP_SESSION_OK);
+    assert(rudp_sender_start(&sender, &sender_clock, &sender_random, &sender_io, &receiver_peer,
+                             &transfer) == RUDP_SESSION_OK);
+    assert(rudp_session_receive(&receiver, &sender_peer, &sender_context.sent[0]) ==
+           RUDP_SESSION_OK);
+    assert(receiver.state == RUDP_SESSION_PENDING);
+    assert(rudp_session_receive(&receiver, &other_peer, &sender_context.sent[0]) ==
+           RUDP_SESSION_ERR_PEER);
+    assert(receiver.state == RUDP_SESSION_PENDING);
+
+    transfer.length = RUDP_MAX_TRANSFER_LENGTH + 1U;
+    assert(rudp_sender_start(&sender, &sender_clock, &sender_random, &sender_io, &receiver_peer,
+                             &transfer) == RUDP_SESSION_ERR_TRANSFER_SIZE);
+
+    receiver_context = (struct fake_context){.nonce = 20U, .random_failure = 1};
+    assert(rudp_receiver_listen(&receiver, &receiver_clock, &receiver_random, &receiver_io) ==
+           RUDP_SESSION_OK);
+    sender_context = (struct fake_context){.nonce = 10U};
+    transfer = metadata();
+    assert(rudp_sender_start(&sender, &sender_clock, &sender_random, &sender_io, &receiver_peer,
+                             &transfer) == RUDP_SESSION_OK);
+    assert(rudp_session_receive(&receiver, &sender_peer, &sender_context.sent[0]) ==
+           RUDP_SESSION_ERR_RANDOM);
+    assert(receiver.state == RUDP_SESSION_FAILED);
+}
+
 int main(void)
 {
     test_setup_duplicates_and_peer_binding();
     test_pending_duplicate_does_not_reset_deadline();
     test_retries_timeout_and_failures();
     test_restart_abort_and_limits();
+    test_busy_receiver_and_setup_failures();
     puts("session tests passed");
     return 0;
 }

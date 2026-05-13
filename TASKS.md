@@ -92,7 +92,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 
 ## Phase 2 — Session plumbing
 
-- [ ] Implement socket wrappers, injected clock/randomness/I/O interfaces, peer binding and idempotent setup/abort states. Start `docs/design.md` with state transitions and public API ownership/backpressure/error semantics.
+- [x] Implement socket wrappers, injected clock/randomness/I/O interfaces, peer binding and idempotent setup/abort states. Start `docs/design.md` with state transitions and public API ownership/backpressure/error semantics.
 - [ ] Test duplicate/lost setup messages, timeout, busy receiver, wrong peer/session, receiver restart and syscall failures. Add bounded live loopback setup tests.
 
 **Checkpoint:** setup succeeds or fails within its deadline; stale sessions cannot deliver data.

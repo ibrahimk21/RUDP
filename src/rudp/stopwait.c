@@ -102,6 +102,9 @@ rudp_stopwait_sender_start(struct rudp_stopwait_sender *sender, const struct rud
         (source_length != 0U && source == NULL)) {
         return RUDP_TRANSFER_ERR_ARGUMENT;
     }
+    if ((uint64_t)source_length > RUDP_MAX_TRANSFER_LENGTH) {
+        return RUDP_TRANSFER_ERR_LIMIT;
+    }
     memset(sender, 0, sizeof(*sender));
     sender->clock = *clock;
     sender->io = *io;
@@ -199,6 +202,9 @@ enum rudp_transfer_error rudp_stopwait_receiver_start(struct rudp_stopwait_recei
         sink->append == NULL || sink->finish == NULL || !valid_io(clock, io)) {
         return RUDP_TRANSFER_ERR_ARGUMENT;
     }
+    if (metadata->length > RUDP_MAX_TRANSFER_LENGTH && metadata->length != UINT64_MAX) {
+        return RUDP_TRANSFER_ERR_LIMIT;
+    }
     memset(receiver, 0, sizeof(*receiver));
     receiver->state = RUDP_TRANSFER_RECEIVING;
     receiver->clock = *clock;
@@ -242,6 +248,21 @@ enum rudp_transfer_error rudp_stopwait_receiver_receive(struct rudp_stopwait_rec
     }
     if (packet->type == RUDP_PACKET_DATA) {
         if (packet->seq == receiver->expected_sequence) {
+            uint64_t remaining;
+            uint16_t expected_length;
+
+            if (receiver->metadata.length == UINT64_MAX) {
+                remaining = RUDP_MAX_TRANSFER_LENGTH - receiver->received_length;
+            } else {
+                remaining = receiver->metadata.length - receiver->received_length;
+            }
+            expected_length = remaining > RUDP_MAX_DATA_PAYLOAD
+                                  ? (uint16_t)RUDP_MAX_DATA_PAYLOAD
+                                  : (uint16_t)remaining;
+            if (receiver->received_length >= RUDP_MAX_TRANSFER_LENGTH ||
+                packet->data_length != expected_length) {
+                return RUDP_TRANSFER_ERR_PACKET;
+            }
             if (receiver->received_length + packet->data_length > receiver->metadata.length ||
                 receiver->sink.append(receiver->sink.context, packet->data, packet->data_length) !=
                     0) {

@@ -99,7 +99,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 
 ## Phase 3 — Bounded stop-and-wait
 
-- [ ] Implement cumulative ACK=N+1, retained retransmit data, fixed 1-second DATA timer, deadlines, framing, FIN/FIN_ACK and linger with an in-memory sink.
+- [x] Implement cumulative ACK=N+1, retained retransmit data, fixed 1-second DATA timer, deadlines, framing, FIN/FIN_ACK and linger with an in-memory sink.
 - [ ] Build a fake-clock packet scheduler with scripted events and independent seeded directional PRNGs (specified algorithm, not platform `rand`). Tests select loss/delay/duplicate/reorder/corruption by type, sequence and transmission occurrence.
 - [ ] Test DATA/ACK/FIN/FIN_ACK loss, duplicates, empty/final-short payloads, peer death, completion-unknown, and permanent-loss bounded failure.
 

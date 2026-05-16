@@ -234,9 +234,9 @@ enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sende
                 sender->probe_delay_ms = 0U;
             }
             if (update.cumulative_advanced) {
-                if (update.rtt_sample_suppressed || !update.rtt_sample_available) {
+                if (update.rtt_sample_suppressed) {
                     sender->suppressed_rtt_samples += 1U;
-                } else {
+                } else if (update.rtt_sample_available) {
                     rudp_rtt_estimator_sample(&sender->rtt, (double)(now - update.rtt_sent_at_ms));
                     sender->clean_rtt_samples += 1U;
                 }

@@ -103,3 +103,10 @@ send, restarts after an advancing cumulative ACK while unsacked DATA remains,
 and doubles up to 60 seconds after an expiry. Fast retransmissions do not move
 the timer. The sender exposes clean-sample, suppressed-sample, fast-retransmit,
 and timeout-retransmit counters for later machine-readable reporting.
+
+Deterministic tests compare estimator state and timer deadlines with values
+calculated directly from the contract. The bounded live loopback check first
+measures the uninjected scheduler/socket baseline, then adds 50 ms before DATA
+delivery and 50 ms before ACK delivery. It expects 100 ms of added RTT with the
+declared initial scheduler tolerance of 30 ms; an out-of-tolerance run prints
+the baseline and observed values as a measured-environment failure.

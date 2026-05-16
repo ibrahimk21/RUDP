@@ -115,7 +115,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 ## Phase 5 — Adaptive timers
 
 - [x] Implement the estimator/timer contract and counters for clean samples, suppressed samples, fast retransmits and timeouts.
-- [ ] Test synthetic traces against independently computed values. Live integration: 50-ms delay in each direction predicts about 100-ms RTT, not 50 ms; measure uninjected baseline first and use a documented scheduler tolerance (initially 30 ms).
+- [x] Test synthetic traces against independently computed values. Live integration: 50-ms delay in each direction predicts about 100-ms RTT, not 50 ms; measure uninjected baseline first and use a documented scheduler tolerance (initially 30 ms).
 
 **Checkpoint:** fake-clock timer assertions pass exactly; bounded live tests either pass tolerances or report measured environment failure, never silently change expected values.
 

@@ -355,6 +355,112 @@ static void test_tail_loss_uses_timer(void)
     transfer_pair_destroy(pair);
 }
 
+static void test_adaptive_timer_restart_and_sack_rules(void)
+{
+    static const uint8_t digest[16] = {1U};
+    uint8_t source[3U * RUDP_MAX_DATA_PAYLOAD] = {0};
+    struct capture_context capture = {0};
+    struct rudp_windowed_sender *sender = calloc(1U, sizeof(*sender));
+    const struct rudp_clock clock = {&capture, capture_now};
+    const struct rudp_session_io io = {&capture, capture_send};
+    const struct rudp_peer peer = {.ipv4_address = UINT32_C(0x7f000001), .port = 1U};
+    struct rudp_packet ack = {
+        .type = RUDP_PACKET_ACK,
+        .client_nonce = 11U,
+        .server_nonce = 22U,
+        .ack = 1U,
+        .receive_limit = RUDP_WINDOW_CAPACITY,
+    };
+
+    assert(sender != NULL);
+    assert(rudp_windowed_sender_start(sender, &clock, &io, &peer, 11U, 22U, source, sizeof(source),
+                                      digest, 3U, RUDP_WINDOW_CAPACITY) == RUDP_TRANSFER_OK);
+    assert(sender->data_timer_ms == 1000.0);
+    capture.now_ms = 100U;
+    assert(capture_now(&capture) == 100U);
+    assert(rudp_windowed_sender_receive(sender, &ack) == RUDP_TRANSFER_OK);
+    assert(sender->clean_rtt_samples == 1U);
+    assert(sender->suppressed_rtt_samples == 0U);
+    assert(sender->rtt.srtt_ms == 100.0);
+    assert(sender->rtt.current_rto_ms == 300.0);
+    assert(sender->data_timer_ms == 400.0);
+
+    capture.now_ms = 150U;
+    assert(capture_now(&capture) == 150U);
+    ack.sack_count = 1U;
+    ack.sacks[0] = (struct rudp_sack_block){.start = 2U, .end = 3U};
+    assert(rudp_windowed_sender_receive(sender, &ack) == RUDP_TRANSFER_OK);
+    assert(sender->clean_rtt_samples == 1U);
+    assert(sender->data_timer_ms == 400.0);
+
+    capture.now_ms = 200U;
+    assert(capture_now(&capture) == 200U);
+    ack.ack = 2U;
+    ack.sack_count = 0U;
+    assert(rudp_windowed_sender_receive(sender, &ack) == RUDP_TRANSFER_OK);
+    assert(sender->clean_rtt_samples == 2U);
+    assert(sender->rtt.srtt_ms == 112.5);
+    assert(sender->rtt.rttvar_ms == 62.5);
+    assert(sender->rtt.current_rto_ms == 362.5);
+    assert(sender->data_timer_ms == 0.0);
+
+    capture.now_ms = 250U;
+    assert(capture_now(&capture) == 250U);
+    ack.ack = 3U;
+    assert(rudp_windowed_sender_receive(sender, &ack) == RUDP_TRANSFER_OK);
+    assert(sender->clean_rtt_samples == 2U);
+    assert(sender->suppressed_rtt_samples == 0U);
+    free(sender);
+}
+
+static void test_timeout_backoff_ack_loss_and_karn_suppression(void)
+{
+    static const uint8_t digest[16] = {1U};
+    uint8_t source[2U * RUDP_MAX_DATA_PAYLOAD] = {0};
+    struct capture_context capture = {0};
+    struct rudp_windowed_sender *sender = calloc(1U, sizeof(*sender));
+    const struct rudp_clock clock = {&capture, capture_now};
+    const struct rudp_session_io io = {&capture, capture_send};
+    const struct rudp_peer peer = {.ipv4_address = UINT32_C(0x7f000001), .port = 1U};
+    struct rudp_packet ack = {
+        .type = RUDP_PACKET_ACK,
+        .client_nonce = 11U,
+        .server_nonce = 22U,
+        .ack = 1U,
+        .receive_limit = RUDP_WINDOW_CAPACITY,
+    };
+
+    assert(sender != NULL);
+    assert(rudp_windowed_sender_start(sender, &clock, &io, &peer, 11U, 22U, source, sizeof(source),
+                                      digest, 1U, RUDP_WINDOW_CAPACITY) == RUDP_TRANSFER_OK);
+    /* Model a receiver ACK that is lost: none reaches the sender before expiry. */
+    capture.now_ms = 999U;
+    assert(capture_now(&capture) == 999U);
+    assert(rudp_windowed_sender_tick(sender) == RUDP_TRANSFER_OK);
+    assert(sender->timeout_retransmits == 0U);
+    capture.now_ms = 1000U;
+    assert(capture_now(&capture) == 1000U);
+    assert(rudp_windowed_sender_tick(sender) == RUDP_TRANSFER_OK);
+    assert(sender->timeout_retransmits == 1U);
+    assert(sender->rtt.current_rto_ms == 2000.0);
+    assert(sender->data_timer_ms == 3000.0);
+
+    capture.now_ms = 1100U;
+    assert(capture_now(&capture) == 1100U);
+    assert(rudp_windowed_sender_receive(sender, &ack) == RUDP_TRANSFER_OK);
+    assert(sender->suppressed_rtt_samples == 1U);
+    assert(sender->clean_rtt_samples == 0U);
+    assert(sender->data_timer_ms == 3100.0);
+
+    capture.now_ms = 1200U;
+    assert(capture_now(&capture) == 1200U);
+    ack.ack = 2U;
+    assert(rudp_windowed_sender_receive(sender, &ack) == RUDP_TRANSFER_OK);
+    assert(sender->clean_rtt_samples == 1U);
+    assert(sender->rtt.current_rto_ms == 300.0);
+    free(sender);
+}
+
 static void test_memory_caps(void)
 {
     assert(sizeof(struct rudp_receive_window) <=
@@ -371,6 +477,8 @@ int main(void)
     test_stopped_consumer_and_sack_limit();
     test_ack_validation_and_recovery_suppression();
     test_tail_loss_uses_timer();
+    test_adaptive_timer_restart_and_sack_rules();
+    test_timeout_backoff_ack_loss_and_karn_suppression();
     test_memory_caps();
     puts("windowed transfer tests passed");
     return 0;

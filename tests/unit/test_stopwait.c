@@ -146,8 +146,8 @@ static void scheduled_pair_start(struct scheduled_pair *pair)
     assert(rudp_stopwait_receiver_start(&pair->receiver, &clock, &receiver_io, &peer, 11U, 22U,
                                         &metadata, &sink_api) == RUDP_TRANSFER_OK);
     assert(rudp_stopwait_sender_start(&pair->sender, &clock, &sender_io, &peer, 11U, 22U,
-                                      pair->source, sizeof(pair->source), digest) ==
-           RUDP_TRANSFER_OK);
+                                      pair->source, sizeof(pair->source),
+                                      digest) == RUDP_TRANSFER_OK);
 }
 
 static void scheduled_run(struct scheduled_pair *pair, uint64_t deadline_ms)
@@ -262,8 +262,7 @@ static void test_invalid_framing(void)
 
     assert(rudp_stopwait_receiver_start(&receiver, &clock, &io, &peer, 11U, 22U, &metadata,
                                         &sink_api) == RUDP_TRANSFER_OK);
-    assert(rudp_stopwait_receiver_receive(&receiver, &short_nonfinal) ==
-           RUDP_TRANSFER_ERR_PACKET);
+    assert(rudp_stopwait_receiver_receive(&receiver, &short_nonfinal) == RUDP_TRANSFER_ERR_PACKET);
     assert(sink.length == 0U);
 }
 

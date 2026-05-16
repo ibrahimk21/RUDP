@@ -108,7 +108,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 ## Phase 4 — Windows, flow control and SACK
 
 - [x] Implement bounded rings, consumed-versus-received tracking, serial arithmetic, zero-credit PROBEs, SACK scoreboard and recovery suppression; wire the fixed-window CC interface.
-- [ ] Test wrap, invalid future ACKs, stale credit, slow/stopped consumers, lost updates, >4 holes, reordered/duplicated ACKs, retransmission loss and tail loss. Assert memory caps and no repeated fast retransmit from unchanged evidence.
+- [x] Test wrap, invalid future ACKs, stale credit, slow/stopped consumers, lost updates, >4 holes, reordered/duplicated ACKs, retransmission loss and tail loss. Assert memory caps and no repeated fast retransmit from unchanged evidence.
 
 **Checkpoint:** interior loss with sufficient evidence uses fast recovery; every other loss has timer/deadline coverage without overflow or deadlock.
 

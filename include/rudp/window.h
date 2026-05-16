@@ -73,10 +73,11 @@ void rudp_send_scoreboard_init(struct rudp_send_scoreboard *scoreboard, uint32_t
                                uint32_t receive_limit);
 bool rudp_send_scoreboard_track(struct rudp_send_scoreboard *scoreboard, uint32_t sequence,
                                 const uint8_t *data, uint16_t length);
-enum rudp_ack_result
-rudp_send_scoreboard_apply_ack(struct rudp_send_scoreboard *scoreboard, uint32_t ack,
-                               uint32_t receive_limit, const struct rudp_sack_block *sacks,
-                               uint8_t sack_count, struct rudp_ack_update *update);
+enum rudp_ack_result rudp_send_scoreboard_apply_ack(struct rudp_send_scoreboard *scoreboard,
+                                                    uint32_t ack, uint32_t receive_limit,
+                                                    const struct rudp_sack_block *sacks,
+                                                    uint8_t sack_count,
+                                                    struct rudp_ack_update *update);
 size_t rudp_send_scoreboard_retained(const struct rudp_send_scoreboard *scoreboard);
 size_t rudp_send_scoreboard_flight(const struct rudp_send_scoreboard *scoreboard);
 struct rudp_send_slot *rudp_send_scoreboard_find(struct rudp_send_scoreboard *scoreboard,

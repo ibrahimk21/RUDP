@@ -5,8 +5,11 @@ laboratory project for ordered delivery, bounded failure, and congestion-control
 experiments on controlled Linux network profiles. It is not authenticated,
 encrypted, or intended for deployment on the public Internet.
 
-The project is currently scaffolded and ready for Phase 0. Product
-implementation intentionally has not started.
+Phases 0 through 4 are complete. The repository contains the validated packet
+codec and setup state machine, bounded stop-and-wait transfers, deterministic
+impairment scheduling, and a bounded windowed transfer engine with flow
+control, SACK recovery, zero-credit probes, and fixed-window congestion
+control. Phase 5 (adaptive timers) has not started.
 
 ## Supported development environment
 
@@ -24,9 +27,7 @@ make configure
 make test
 ```
 
-Benchmark-specific tooling and documentation will be added only when the
-implementation requires it. Benchmark privileges are not needed for the normal
-build and test commands.
+Benchmark privileges are not needed for the normal build and test commands.
 
 Current local and benchmark gate status is maintained in
 [docs/readiness.md](docs/readiness.md). The benchmark topology safety check is

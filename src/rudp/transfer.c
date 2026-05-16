@@ -59,7 +59,7 @@ static enum rudp_transfer_error receiver_send(struct rudp_windowed_receiver *rec
 }
 
 static enum rudp_transfer_error send_data_slot(struct rudp_windowed_sender *sender,
-                                               struct rudp_send_slot *slot)
+                                               const struct rudp_send_slot *slot)
 {
     const struct rudp_packet packet = {
         .type = RUDP_PACKET_DATA,
@@ -110,11 +110,10 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
            rudp_send_scoreboard_retained(&sender->scoreboard) < RUDP_WINDOW_CAPACITY &&
            rudp_send_scoreboard_flight(&sender->scoreboard) <
                rudp_fixed_cc_window(&sender->congestion) &&
-           rudp_seq_in_window(sender->scoreboard.next_sequence,
-                              sender->scoreboard.cumulative_ack,
+           rudp_seq_in_window(sender->scoreboard.next_sequence, sender->scoreboard.cumulative_ack,
                               sender->scoreboard.receive_limit)) {
         size_t length = sender->source_length - sender->offset;
-        struct rudp_send_slot *slot;
+        const struct rudp_send_slot *slot;
 
         if (length > RUDP_MAX_DATA_PAYLOAD) {
             length = RUDP_MAX_DATA_PAYLOAD;
@@ -123,8 +122,8 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
                                         sender->source + sender->offset, (uint16_t)length)) {
             return sender_fail(sender, RUDP_TRANSFER_ERR_PACKET);
         }
-        slot = rudp_send_scoreboard_find(&sender->scoreboard,
-                                         sender->scoreboard.next_sequence - 1U);
+        slot =
+            rudp_send_scoreboard_find(&sender->scoreboard, sender->scoreboard.next_sequence - 1U);
         if (send_data_slot(sender, slot) != RUDP_TRANSFER_OK) {
             return sender->error;
         }
@@ -189,7 +188,7 @@ static enum rudp_transfer_error sender_retransmit_fast(struct rudp_windowed_send
 }
 
 enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sender *sender,
-                                                       const struct rudp_packet *packet)
+                                                      const struct rudp_packet *packet)
 {
     if (sender == NULL || packet == NULL) {
         return RUDP_TRANSFER_ERR_ARGUMENT;
@@ -215,17 +214,16 @@ enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sende
     }
     {
         struct rudp_ack_update update;
-        const enum rudp_ack_result result = rudp_send_scoreboard_apply_ack(
-            &sender->scoreboard, packet->ack, packet->receive_limit, packet->sacks,
-            packet->sack_count, &update);
+        const enum rudp_ack_result result =
+            rudp_send_scoreboard_apply_ack(&sender->scoreboard, packet->ack, packet->receive_limit,
+                                           packet->sacks, packet->sack_count, &update);
 
         if (result == RUDP_ACK_INVALID) {
             return RUDP_TRANSFER_ERR_PACKET;
         }
         if (result == RUDP_ACK_CHANGED) {
             if (update.cumulative_advanced || update.newly_sacked != 0U) {
-                sender->progress_deadline_ms =
-                    sender_now(sender) + RUDP_DATA_PROGRESS_TIMEOUT_MS;
+                sender->progress_deadline_ms = sender_now(sender) + RUDP_DATA_PROGRESS_TIMEOUT_MS;
             }
             if (update.credit_advanced) {
                 sender->probe_timer_ms = 0U;
@@ -248,8 +246,7 @@ static struct rudp_send_slot *lowest_unsacked(struct rudp_send_scoreboard *score
 {
     uint32_t sequence;
 
-    for (sequence = scoreboard->cumulative_ack; sequence != scoreboard->next_sequence;
-         ++sequence) {
+    for (sequence = scoreboard->cumulative_ack; sequence != scoreboard->next_sequence; ++sequence) {
         struct rudp_send_slot *slot = rudp_send_scoreboard_find(scoreboard, sequence);
 
         if (slot != NULL && !slot->sacked) {
@@ -327,8 +324,8 @@ enum rudp_transfer_error rudp_windowed_sender_tick(struct rudp_windowed_sender *
 static void receiver_make_ack(const struct rudp_windowed_receiver *receiver,
                               struct rudp_packet *packet)
 {
-    rudp_receive_window_make_ack(&receiver->window, receiver->client_nonce,
-                                 receiver->server_nonce, packet);
+    rudp_receive_window_make_ack(&receiver->window, receiver->client_nonce, receiver->server_nonce,
+                                 packet);
 }
 
 static enum rudp_transfer_error receiver_ack(struct rudp_windowed_receiver *receiver)
@@ -339,12 +336,13 @@ static enum rudp_transfer_error receiver_ack(struct rudp_windowed_receiver *rece
     return receiver_send(receiver, &packet);
 }
 
-enum rudp_transfer_error
-rudp_windowed_receiver_start(struct rudp_windowed_receiver *receiver, const struct rudp_clock *clock,
-                             const struct rudp_session_io *io, const struct rudp_peer *peer,
-                             uint64_t client_nonce, uint64_t server_nonce,
-                             const struct rudp_transfer_metadata *metadata,
-                             const struct rudp_transfer_sink *sink)
+enum rudp_transfer_error rudp_windowed_receiver_start(struct rudp_windowed_receiver *receiver,
+                                                      const struct rudp_clock *clock,
+                                                      const struct rudp_session_io *io,
+                                                      const struct rudp_peer *peer,
+                                                      uint64_t client_nonce, uint64_t server_nonce,
+                                                      const struct rudp_transfer_metadata *metadata,
+                                                      const struct rudp_transfer_sink *sink)
 {
     if (receiver == NULL || peer == NULL || metadata == NULL || sink == NULL ||
         sink->append == NULL || sink->finish == NULL || !callbacks_valid(clock, io) ||
@@ -382,13 +380,13 @@ static bool valid_data_length(const struct rudp_windowed_receiver *receiver,
         return false;
     }
     remaining = receiver->metadata.length - offset;
-    expected = remaining > RUDP_MAX_DATA_PAYLOAD ? (uint16_t)RUDP_MAX_DATA_PAYLOAD
-                                                 : (uint16_t)remaining;
+    expected =
+        remaining > RUDP_MAX_DATA_PAYLOAD ? (uint16_t)RUDP_MAX_DATA_PAYLOAD : (uint16_t)remaining;
     return packet->data_length == expected;
 }
 
 enum rudp_transfer_error rudp_windowed_receiver_receive(struct rudp_windowed_receiver *receiver,
-                                                         const struct rudp_packet *packet)
+                                                        const struct rudp_packet *packet)
 {
     uint64_t now;
 
@@ -457,8 +455,8 @@ enum rudp_transfer_error rudp_windowed_receiver_receive(struct rudp_windowed_rec
 }
 
 enum rudp_transfer_error rudp_windowed_receiver_consume(struct rudp_windowed_receiver *receiver,
-                                                         size_t maximum_packets,
-                                                         size_t *consumed_packets)
+                                                        size_t maximum_packets,
+                                                        size_t *consumed_packets)
 {
     size_t count = 0U;
 

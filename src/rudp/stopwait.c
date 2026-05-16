@@ -263,9 +263,8 @@ enum rudp_transfer_error rudp_stopwait_receiver_receive(struct rudp_stopwait_rec
             } else {
                 remaining = receiver->metadata.length - receiver->received_length;
             }
-            expected_length = remaining > RUDP_MAX_DATA_PAYLOAD
-                                  ? (uint16_t)RUDP_MAX_DATA_PAYLOAD
-                                  : (uint16_t)remaining;
+            expected_length = remaining > RUDP_MAX_DATA_PAYLOAD ? (uint16_t)RUDP_MAX_DATA_PAYLOAD
+                                                                : (uint16_t)remaining;
             if (receiver->received_length >= RUDP_MAX_TRANSFER_LENGTH ||
                 packet->data_length != expected_length) {
                 return RUDP_TRANSFER_ERR_PACKET;

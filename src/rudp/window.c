@@ -55,8 +55,7 @@ bool rudp_receive_window_insert(struct rudp_receive_window *window, uint32_t seq
 const struct rudp_receive_slot *
 rudp_receive_window_next_consumable(const struct rudp_receive_window *window)
 {
-    const struct rudp_receive_slot *slot =
-        &window->slots[window->consumed % RUDP_WINDOW_CAPACITY];
+    const struct rudp_receive_slot *slot = &window->slots[window->consumed % RUDP_WINDOW_CAPACITY];
 
     if (!slot->present || slot->sequence != window->consumed) {
         return NULL;
@@ -186,10 +185,11 @@ static bool sacks_valid(const struct rudp_send_scoreboard *scoreboard, uint32_t 
     return true;
 }
 
-enum rudp_ack_result
-rudp_send_scoreboard_apply_ack(struct rudp_send_scoreboard *scoreboard, uint32_t ack,
-                               uint32_t receive_limit, const struct rudp_sack_block *sacks,
-                               uint8_t sack_count, struct rudp_ack_update *update)
+enum rudp_ack_result rudp_send_scoreboard_apply_ack(struct rudp_send_scoreboard *scoreboard,
+                                                    uint32_t ack, uint32_t receive_limit,
+                                                    const struct rudp_sack_block *sacks,
+                                                    uint8_t sack_count,
+                                                    struct rudp_ack_update *update)
 {
     uint32_t sequence;
     uint8_t index;
@@ -200,8 +200,8 @@ rudp_send_scoreboard_apply_ack(struct rudp_send_scoreboard *scoreboard, uint32_t
         return RUDP_ACK_INVALID;
     }
     advertised_width = receive_limit - ack;
-    if (!ack_in_sent_range(scoreboard, ack) ||
-        advertised_width > RUDP_WINDOW_CAPACITY || advertised_width >= UINT32_C(0x80000000) ||
+    if (!ack_in_sent_range(scoreboard, ack) || advertised_width > RUDP_WINDOW_CAPACITY ||
+        advertised_width >= UINT32_C(0x80000000) ||
         !sacks_valid(scoreboard, ack, sacks, sack_count)) {
         return RUDP_ACK_INVALID;
     }
@@ -267,8 +267,7 @@ size_t rudp_send_scoreboard_flight(const struct rudp_send_scoreboard *scoreboard
     size_t count = 0U;
     uint32_t sequence;
 
-    for (sequence = scoreboard->cumulative_ack; sequence != scoreboard->next_sequence;
-         ++sequence) {
+    for (sequence = scoreboard->cumulative_ack; sequence != scoreboard->next_sequence; ++sequence) {
         const struct rudp_send_slot *slot = &scoreboard->slots[sequence % RUDP_WINDOW_CAPACITY];
 
         if (slot->in_use && slot->sequence == sequence && !slot->sacked) {
@@ -294,8 +293,7 @@ rudp_send_scoreboard_next_fast_retransmit(struct rudp_send_scoreboard *scoreboar
 {
     uint32_t sequence;
 
-    for (sequence = scoreboard->cumulative_ack; sequence != scoreboard->next_sequence;
-         ++sequence) {
+    for (sequence = scoreboard->cumulative_ack; sequence != scoreboard->next_sequence; ++sequence) {
         struct rudp_send_slot *slot = rudp_send_scoreboard_find(scoreboard, sequence);
 
         if (slot != NULL && slot->needs_fast_retransmit) {

@@ -25,8 +25,7 @@ int main(void)
     assert(window.expected == UINT32_MAX);
     assert(rudp_receive_window_insert(&window, UINT32_MAX, &byte, 1U));
     assert(window.expected == 2U);
-    assert(!rudp_receive_window_insert(&window, window.consumed + RUDP_WINDOW_CAPACITY, &byte,
-                                       1U));
+    assert(!rudp_receive_window_insert(&window, window.consumed + RUDP_WINDOW_CAPACITY, &byte, 1U));
     assert(rudp_receive_window_consume(&window, UINT32_MAX - 1U));
     assert(rudp_receive_window_limit(&window) == UINT32_MAX + RUDP_WINDOW_CAPACITY);
 

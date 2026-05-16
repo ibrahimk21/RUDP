@@ -58,20 +58,21 @@ rudp_windowed_sender_start(struct rudp_windowed_sender *sender, const struct rud
                            size_t source_length, const uint8_t digest[16], uint32_t fixed_window,
                            uint32_t initial_receive_limit);
 enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sender *sender,
-                                                       const struct rudp_packet *packet);
+                                                      const struct rudp_packet *packet);
 enum rudp_transfer_error rudp_windowed_sender_tick(struct rudp_windowed_sender *sender);
 
-enum rudp_transfer_error
-rudp_windowed_receiver_start(struct rudp_windowed_receiver *receiver, const struct rudp_clock *clock,
-                             const struct rudp_session_io *io, const struct rudp_peer *peer,
-                             uint64_t client_nonce, uint64_t server_nonce,
-                             const struct rudp_transfer_metadata *metadata,
-                             const struct rudp_transfer_sink *sink);
+enum rudp_transfer_error rudp_windowed_receiver_start(struct rudp_windowed_receiver *receiver,
+                                                      const struct rudp_clock *clock,
+                                                      const struct rudp_session_io *io,
+                                                      const struct rudp_peer *peer,
+                                                      uint64_t client_nonce, uint64_t server_nonce,
+                                                      const struct rudp_transfer_metadata *metadata,
+                                                      const struct rudp_transfer_sink *sink);
 enum rudp_transfer_error rudp_windowed_receiver_receive(struct rudp_windowed_receiver *receiver,
-                                                         const struct rudp_packet *packet);
+                                                        const struct rudp_packet *packet);
 enum rudp_transfer_error rudp_windowed_receiver_consume(struct rudp_windowed_receiver *receiver,
-                                                         size_t maximum_packets,
-                                                         size_t *consumed_packets);
+                                                        size_t maximum_packets,
+                                                        size_t *consumed_packets);
 enum rudp_transfer_error rudp_windowed_receiver_tick(struct rudp_windowed_receiver *receiver);
 
 #endif

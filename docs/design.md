@@ -66,3 +66,25 @@ output-validation boundary for this phase; Phase 6 supplies file handling and
 the MD5 implementation. A verified FIN enters a 35-second linger state, where
 duplicate matching FIN packets receive another FIN_ACK without committing the
 sink a second time.
+
+## Phase 4 windowed transfer
+
+The windowed API retains a fixed 8192-slot sender ring and receiver ring. DATA
+is copied into those rings, so neither decoded packet buffers nor application
+write buffers need to remain valid after the corresponding call returns. The
+large state objects are intended to be heap-allocated by the eventual CLI.
+
+Receipt and consumption are deliberately separate. `expected` advances when a
+contiguous DATA packet is retained, while `consumed` advances only through
+`rudp_windowed_receiver_consume` after the sink accepts the bytes. Thus ACKs can
+report received data without reopening credit. A successful consume sends a
+window-update ACK; a credit-blocked sender uses 1/2/4-second PROBEs until one of
+those updates is observed.
+
+The sender keeps cumulatively unacknowledged payloads even after SACK and never
+interprets omitted SACK blocks as reneging. Three distinct newly SACKed higher
+packets arm a missing slot for fast retransmission. Once retransmitted, old
+evidence cannot arm it again; three later distinct acknowledgments are needed.
+The fixed congestion-control implementation limits unsacked flight during this
+phase. Phase 5 replaces only the fixed DATA timer, not these ownership or flow-
+control rules.

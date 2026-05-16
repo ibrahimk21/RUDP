@@ -40,9 +40,11 @@ uint8_t rudp_receive_window_sacks(const struct rudp_receive_window *window,
 
 struct rudp_send_slot {
     uint32_t sequence;
+    uint64_t sent_at_ms;
     uint8_t higher_sack_evidence;
     bool in_use;
     bool sacked;
+    bool retransmitted;
     bool fast_retransmitted;
     bool needs_fast_retransmit;
     uint16_t length;
@@ -65,8 +67,11 @@ enum rudp_ack_result {
 struct rudp_ack_update {
     uint32_t newly_acked;
     uint32_t newly_sacked;
+    uint64_t rtt_sent_at_ms;
     bool cumulative_advanced;
     bool credit_advanced;
+    bool rtt_sample_available;
+    bool rtt_sample_suppressed;
 };
 
 void rudp_send_scoreboard_init(struct rudp_send_scoreboard *scoreboard, uint32_t initial_ack,
@@ -82,6 +87,7 @@ size_t rudp_send_scoreboard_retained(const struct rudp_send_scoreboard *scoreboa
 size_t rudp_send_scoreboard_flight(const struct rudp_send_scoreboard *scoreboard);
 struct rudp_send_slot *rudp_send_scoreboard_find(struct rudp_send_scoreboard *scoreboard,
                                                  uint32_t sequence);
+void rudp_send_scoreboard_mark_sent(struct rudp_send_slot *slot, uint64_t sent_at_ms);
 struct rudp_send_slot *
 rudp_send_scoreboard_next_fast_retransmit(struct rudp_send_scoreboard *scoreboard);
 void rudp_send_scoreboard_mark_retransmitted(struct rudp_send_slot *slot);

@@ -212,6 +212,11 @@ enum rudp_ack_result rudp_send_scoreboard_apply_ack(struct rudp_send_scoreboard 
             if (slot->in_use && slot->sequence == sequence) {
                 if (!slot->sacked) {
                     local_update.newly_acked += 1U;
+                    local_update.rtt_sent_at_ms = slot->sent_at_ms;
+                    local_update.rtt_sample_available = true;
+                }
+                if (slot->retransmitted) {
+                    local_update.rtt_sample_suppressed = true;
                 }
                 memset(slot, 0, sizeof(*slot));
             }
@@ -288,6 +293,11 @@ struct rudp_send_slot *rudp_send_scoreboard_find(struct rudp_send_scoreboard *sc
     return slot;
 }
 
+void rudp_send_scoreboard_mark_sent(struct rudp_send_slot *slot, uint64_t sent_at_ms)
+{
+    slot->sent_at_ms = sent_at_ms;
+}
+
 struct rudp_send_slot *
 rudp_send_scoreboard_next_fast_retransmit(struct rudp_send_scoreboard *scoreboard)
 {
@@ -306,6 +316,7 @@ rudp_send_scoreboard_next_fast_retransmit(struct rudp_send_scoreboard *scoreboar
 
 void rudp_send_scoreboard_mark_retransmitted(struct rudp_send_slot *slot)
 {
+    slot->retransmitted = true;
     slot->higher_sack_evidence = 0U;
     slot->fast_retransmitted = false;
     slot->needs_fast_retransmit = false;

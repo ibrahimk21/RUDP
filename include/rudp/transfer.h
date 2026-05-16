@@ -3,6 +3,7 @@
 
 #include "rudp/congestion.h"
 #include "rudp/stopwait.h"
+#include "rudp/timer.h"
 #include "rudp/window.h"
 
 #include <stddef.h>
@@ -22,9 +23,10 @@ struct rudp_windowed_sender {
     uint8_t digest[16];
     struct rudp_send_scoreboard scoreboard;
     struct rudp_fixed_cc congestion;
+    struct rudp_rtt_estimator rtt;
     uint64_t started_ms;
     uint64_t progress_deadline_ms;
-    uint64_t data_timer_ms;
+    double data_timer_ms;
     uint64_t probe_timer_ms;
     uint32_t probe_delay_ms;
     uint64_t fin_deadline_ms;
@@ -32,6 +34,8 @@ struct rudp_windowed_sender {
     uint32_t fin_retry_delay_ms;
     uint32_t fast_retransmits;
     uint32_t timeout_retransmits;
+    uint32_t clean_rtt_samples;
+    uint32_t suppressed_rtt_samples;
 };
 
 struct rudp_windowed_receiver {

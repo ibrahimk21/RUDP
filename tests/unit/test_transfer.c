@@ -360,7 +360,7 @@ static void test_memory_caps(void)
     assert(sizeof(struct rudp_receive_window) <=
            RUDP_WINDOW_CAPACITY * (RUDP_MAX_DATA_PAYLOAD + 16U));
     assert(sizeof(struct rudp_send_scoreboard) <=
-           RUDP_WINDOW_CAPACITY * (RUDP_MAX_DATA_PAYLOAD + 24U));
+           RUDP_WINDOW_CAPACITY * (RUDP_MAX_DATA_PAYLOAD + 32U));
 }
 
 int main(void)

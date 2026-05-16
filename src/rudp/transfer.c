@@ -113,7 +113,7 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
            rudp_seq_in_window(sender->scoreboard.next_sequence, sender->scoreboard.cumulative_ack,
                               sender->scoreboard.receive_limit)) {
         size_t length = sender->source_length - sender->offset;
-        const struct rudp_send_slot *slot;
+        struct rudp_send_slot *slot;
 
         if (length > RUDP_MAX_DATA_PAYLOAD) {
             length = RUDP_MAX_DATA_PAYLOAD;
@@ -124,12 +124,13 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
         }
         slot =
             rudp_send_scoreboard_find(&sender->scoreboard, sender->scoreboard.next_sequence - 1U);
+        rudp_send_scoreboard_mark_sent(slot, now);
         if (send_data_slot(sender, slot) != RUDP_TRANSFER_OK) {
             return sender->error;
         }
         sender->offset += length;
         if (sender->data_timer_ms == 0U) {
-            sender->data_timer_ms = now + RUDP_DATA_RETRY_MS;
+            sender->data_timer_ms = (double)now + sender->rtt.current_rto_ms;
         }
     }
     if (sender->offset == sender->source_length &&
@@ -168,6 +169,7 @@ rudp_windowed_sender_start(struct rudp_windowed_sender *sender, const struct rud
     memcpy(sender->digest, digest, sizeof(sender->digest));
     rudp_send_scoreboard_init(&sender->scoreboard, 0U, initial_receive_limit);
     rudp_fixed_cc_init(&sender->congestion, fixed_window);
+    rudp_rtt_estimator_init(&sender->rtt);
     sender->started_ms = sender_now(sender);
     sender->progress_deadline_ms = sender->started_ms + RUDP_DATA_PROGRESS_TIMEOUT_MS;
     return sender_fill_window(sender);
@@ -222,17 +224,27 @@ enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sende
             return RUDP_TRANSFER_ERR_PACKET;
         }
         if (result == RUDP_ACK_CHANGED) {
+            const uint64_t now = sender_now(sender);
+
             if (update.cumulative_advanced || update.newly_sacked != 0U) {
-                sender->progress_deadline_ms = sender_now(sender) + RUDP_DATA_PROGRESS_TIMEOUT_MS;
+                sender->progress_deadline_ms = now + RUDP_DATA_PROGRESS_TIMEOUT_MS;
             }
             if (update.credit_advanced) {
                 sender->probe_timer_ms = 0U;
                 sender->probe_delay_ms = 0U;
             }
             if (update.cumulative_advanced) {
+                if (update.rtt_sample_suppressed || !update.rtt_sample_available) {
+                    sender->suppressed_rtt_samples += 1U;
+                } else {
+                    rudp_rtt_estimator_sample(&sender->rtt, (double)(now - update.rtt_sent_at_ms));
+                    sender->clean_rtt_samples += 1U;
+                }
                 sender->data_timer_ms = rudp_send_scoreboard_flight(&sender->scoreboard) == 0U
-                                            ? 0U
-                                            : sender_now(sender) + RUDP_DATA_RETRY_MS;
+                                            ? 0.0
+                                            : (double)now + sender->rtt.current_rto_ms;
+            } else if (rudp_send_scoreboard_flight(&sender->scoreboard) == 0U) {
+                sender->data_timer_ms = 0.0;
             }
         }
     }
@@ -288,7 +300,7 @@ enum rudp_transfer_error rudp_windowed_sender_tick(struct rudp_windowed_sender *
         }
         return RUDP_TRANSFER_OK;
     }
-    if (sender->data_timer_ms != 0U && now >= sender->data_timer_ms) {
+    if (sender->data_timer_ms != 0.0 && (double)now >= sender->data_timer_ms) {
         struct rudp_send_slot *slot = lowest_unsacked(&sender->scoreboard);
 
         if (slot != NULL) {
@@ -297,9 +309,10 @@ enum rudp_transfer_error rudp_windowed_sender_tick(struct rudp_windowed_sender *
             }
             rudp_send_scoreboard_mark_retransmitted(slot);
             sender->timeout_retransmits += 1U;
-            sender->data_timer_ms = now + RUDP_DATA_RETRY_MS;
+            rudp_rtt_estimator_timeout(&sender->rtt);
+            sender->data_timer_ms = (double)now + sender->rtt.current_rto_ms;
         } else {
-            sender->data_timer_ms = 0U;
+            sender->data_timer_ms = 0.0;
         }
     }
     if (sender_credit_blocked(sender) && sender->probe_timer_ms != 0U &&

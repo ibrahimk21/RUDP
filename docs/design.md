@@ -88,3 +88,18 @@ evidence cannot arm it again; three later distinct acknowledgments are needed.
 The fixed congestion-control implementation limits unsacked flight during this
 phase. Phase 5 replaces only the fixed DATA timer, not these ownership or flow-
 control rules.
+
+## Phase 5 adaptive DATA timer
+
+The windowed sender begins with a 1000-ms DATA RTO. A clean advancing
+cumulative ACK updates SRTT and RTTVAR with the Phase 5 estimator and restores
+the computed RTO after any backoff. An ACK advance that covers a retransmitted
+packet is excluded by Karn's rule and counted as a suppressed sample. SACK-only
+ACKs never produce RTT samples or postpone the timer, although an all-SACKed
+flight stops it.
+
+The timer follows the lowest unsacked flight: it starts on the first original
+send, restarts after an advancing cumulative ACK while unsacked DATA remains,
+and doubles up to 60 seconds after an expiry. Fast retransmissions do not move
+the timer. The sender exposes clean-sample, suppressed-sample, fast-retransmit,
+and timeout-retransmit counters for later machine-readable reporting.

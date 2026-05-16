@@ -5,11 +5,9 @@ laboratory project for ordered delivery, bounded failure, and congestion-control
 experiments on controlled Linux network profiles. It is not authenticated,
 encrypted, or intended for deployment on the public Internet.
 
-Phases 0 through 4 are complete. The repository contains the validated packet
-codec and setup state machine, bounded stop-and-wait transfers, deterministic
-impairment scheduling, and a bounded windowed transfer engine with flow
-control, SACK recovery, zero-credit probes, and fixed-window congestion
-control. Phase 5 (adaptive timers) has not started.
+Phases 0 through 5 are complete. The repository contains the validated packet
+codec and setup state machine, bounded reliable transfers, deterministic
+impairment scheduling, window/flow control, SACK recovery, and adaptive timers.
 
 ## Supported development environment
 
@@ -28,6 +26,17 @@ make test
 ```
 
 Benchmark privileges are not needed for the normal build and test commands.
+
+For a local file transfer, start the receiver first. The destination must not
+already exist:
+
+```sh
+./build/rudp receive 9000 received.bin
+./build/rudp send 127.0.0.1 9000 source.bin
+```
+
+Each process prints one JSON status record. A receiver remains available for
+the protocol's bounded FIN linger before exiting successfully.
 
 Current local and benchmark gate status is maintained in
 [docs/readiness.md](docs/readiness.md). The benchmark topology safety check is

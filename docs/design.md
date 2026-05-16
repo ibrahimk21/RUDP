@@ -110,3 +110,39 @@ measures the uninjected scheduler/socket baseline, then adds 50 ms before DATA
 delivery and 50 ms before ACK delivery. It expects 100 ms of added RTT with the
 declared initial scheduler tolerance of 30 ms; an out-of-tolerance run prints
 the baseline and observed values as a measured-environment failure.
+
+## Phase 6 file boundary and CLI
+
+`rudp send HOST PORT INPUT` snapshots a regular source file into bounded memory,
+hashes it before setup, and checks its identity, length, and digest again before
+reporting success. `rudp receive PORT OUTPUT` writes a unique temporary sibling,
+checks every write, verifies length and MD5, flushes and closes it, and uses a
+hard link followed by unlink as the Linux atomic no-replace commit. An existing
+or concurrently created destination is never overwritten. Handled failures
+remove the temporary file; after a process or host crash, operators may remove
+leftovers matching `OUTPUT.rudp-partial.*` after confirming no receiver uses
+them. Power-loss durability is outside the project scope.
+
+Both commands use a nonblocking UDP socket, `poll`, monotonic ticks, Linux
+`getrandom`, and the established session/window APIs. Exactly one JSON status
+record is emitted on exit, including byte, packet, malformed-packet, RTT-sample,
+and retransmission counters. These are correctness diagnostics, not benchmark
+speed claims.
+
+## Phase 6 file boundary and CLI
+
+`rudp send HOST PORT INPUT` snapshots a regular source file into bounded memory,
+hashes it before setup, and checks its identity, length, and digest again before
+reporting success. `rudp receive PORT OUTPUT` writes a unique temporary sibling,
+checks every write, verifies length and MD5, flushes and closes it, and uses a
+hard link followed by unlink as the Linux atomic no-replace commit. An existing
+or concurrently created destination is never overwritten. Handled failures
+remove the temporary file; after a process or host crash, operators may remove
+leftovers matching `OUTPUT.rudp-partial.*` after confirming no receiver uses
+them. Power-loss durability is outside the project scope.
+
+Both commands use a nonblocking UDP socket, `poll`, monotonic ticks, Linux
+`getrandom`, and the established session/window APIs. Exactly one JSON status
+record is emitted on exit, including byte, packet, malformed-packet, RTT-sample,
+and retransmission counters. These are correctness diagnostics, not benchmark
+speed claims.

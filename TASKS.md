@@ -101,7 +101,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 
 - [x] Implement cumulative ACK=N+1, retained retransmit data, fixed 1-second DATA timer, deadlines, framing, FIN/FIN_ACK and linger with an in-memory sink.
 - [x] Build a fake-clock packet scheduler with scripted events and independent seeded directional PRNGs (specified algorithm, not platform `rand`). Tests select loss/delay/duplicate/reorder/corruption by type, sequence and transmission occurrence.
-- [ ] Test DATA/ACK/FIN/FIN_ACK loss, duplicates, empty/final-short payloads, peer death, completion-unknown, and permanent-loss bounded failure.
+- [x] Test DATA/ACK/FIN/FIN_ACK loss, duplicates, empty/final-short payloads, peer death, completion-unknown, and permanent-loss bounded failure.
 
 **Checkpoint:** exactly-once ordered delivery and bounded termination; no wall-clock sleeping in unit tests.
 

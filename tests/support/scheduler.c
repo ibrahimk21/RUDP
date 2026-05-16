@@ -52,8 +52,7 @@ void rudp_test_scheduler_init(struct rudp_test_scheduler *scheduler, uint32_t fo
 bool rudp_test_scheduler_add_rule(struct rudp_test_scheduler *scheduler,
                                   const struct rudp_test_rule *rule)
 {
-    if (scheduler == NULL || rule == NULL || rule->occurrence == 0U ||
-        scheduler->rule_count == RUDP_TEST_MAX_RULES) {
+    if (scheduler == NULL || rule == NULL || scheduler->rule_count == RUDP_TEST_MAX_RULES) {
         return false;
     }
     scheduler->rules[scheduler->rule_count++] = *rule;
@@ -95,7 +94,7 @@ int rudp_test_scheduler_send(void *context, const struct rudp_peer *peer,
             continue;
         }
         rule->seen += 1U;
-        if (rule->seen == rule->occurrence) {
+        if (rule->occurrence == 0U || rule->seen == rule->occurrence) {
             action = rule->action;
             delay_ms = rule->delay_ms;
             break;

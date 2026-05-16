@@ -143,6 +143,9 @@ enum rudp_transfer_error rudp_stopwait_sender_receive(struct rudp_stopwait_sende
         sender->progress_deadline_ms = now_ms(&sender->clock) + RUDP_DATA_PROGRESS_TIMEOUT_MS;
         return sender_send_next(sender);
     }
+    if (packet->type == RUDP_PACKET_ACK) {
+        return RUDP_TRANSFER_OK;
+    }
     if (packet->type != RUDP_PACKET_FIN_ACK || packet->seq != sender->sequence ||
         packet->transfer_length != sender->source_length ||
         memcmp(packet->digest, sender->digest, sizeof(sender->digest)) != 0) {
@@ -235,6 +238,10 @@ enum rudp_transfer_error rudp_stopwait_receiver_receive(struct rudp_stopwait_rec
         return RUDP_TRANSFER_ERR_PACKET;
     }
     if (receiver->state == RUDP_TRANSFER_LINGER) {
+        if (packet->type == RUDP_PACKET_DATA && packet->seq != receiver->expected_sequence) {
+            make_ack(receiver, &response);
+            return send_receiver_packet(receiver, &response);
+        }
         if (packet->type != RUDP_PACKET_FIN || packet->seq != receiver->expected_sequence ||
             packet->transfer_length != receiver->received_length ||
             memcmp(packet->digest, receiver->metadata.digest, sizeof(packet->digest)) != 0) {

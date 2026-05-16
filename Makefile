@@ -15,11 +15,13 @@ TCP_REF := $(BUILD_DIR)/tcp_ref
 UDP_REF := $(BUILD_DIR)/udp_ref
 TEST_SOURCES := $(wildcard tests/**/*.c tests/*.c)
 TEST_OBJECTS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(TEST_SOURCES))
+TEST_SUPPORT_SOURCES := $(wildcard tests/support/*.c)
+TEST_SUPPORT_OBJECTS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(TEST_SUPPORT_SOURCES))
 UNIT_TEST_SOURCES := $(wildcard tests/unit/test_*.c)
 UNIT_TEST_BINS := $(patsubst %.c,$(BUILD_DIR)/%,$(UNIT_TEST_SOURCES))
 INTEGRATION_TEST_SOURCES := $(wildcard tests/integration/test_*.c)
 INTEGRATION_TEST_BINS := $(patsubst %.c,$(BUILD_DIR)/%,$(INTEGRATION_TEST_SOURCES))
-ALL_OBJECTS := $(CORE_OBJECTS) $(TEST_OBJECTS)
+ALL_OBJECTS := $(CORE_OBJECTS) $(TEST_OBJECTS) $(TEST_SUPPORT_OBJECTS)
 
 .PHONY: all configure lib cli tcp_ref udp_ref build test integration sanitize format format-check lint clean help
 
@@ -68,9 +70,9 @@ $(UDP_REF): src/udp_ref/udp_ref.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@
 
-$(BUILD_DIR)/tests/unit/test_%: tests/unit/test_%.c $(LIBRARY)
+$(BUILD_DIR)/tests/unit/test_%: tests/unit/test_%.c $(LIBRARY) $(TEST_SUPPORT_OBJECTS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LIBRARY) $(LDFLAGS) $(LDLIBS) -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Itests/support $< $(TEST_SUPPORT_OBJECTS) $(LIBRARY) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(BUILD_DIR)/tests/integration/test_%: tests/integration/test_%.c $(LIBRARY)
 	@mkdir -p $(dir $@)

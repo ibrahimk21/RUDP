@@ -47,6 +47,8 @@ void rudp_test_scheduler_init(struct rudp_test_scheduler *scheduler, uint32_t fo
     memset(scheduler, 0, sizeof(*scheduler));
     scheduler->random_state[RUDP_TEST_FORWARD] = forward_seed == 0U ? 1U : forward_seed;
     scheduler->random_state[RUDP_TEST_REVERSE] = reverse_seed == 0U ? 1U : reverse_seed;
+    scheduler->loss_accumulator[RUDP_TEST_FORWARD] = forward_seed % 100U;
+    scheduler->loss_accumulator[RUDP_TEST_REVERSE] = reverse_seed % 100U;
 }
 
 void rudp_test_scheduler_set_impairment(struct rudp_test_scheduler *scheduler,
@@ -103,6 +105,19 @@ static bool random_percent(struct rudp_test_scheduler *scheduler,
                            enum rudp_test_direction direction, unsigned int percent)
 {
     return rudp_test_scheduler_random(scheduler, direction) % 100U < percent;
+}
+
+static bool scheduled_percent(struct rudp_test_scheduler *scheduler,
+                              enum rudp_test_direction direction, unsigned int percent)
+{
+    unsigned int value;
+
+    if (percent == 100U) {
+        return true;
+    }
+    value = scheduler->loss_accumulator[direction] + percent;
+    scheduler->loss_accumulator[direction] = value % 100U;
+    return value >= 100U;
 }
 
 static bool native_profile_drop(struct rudp_test_scheduler *scheduler,
@@ -185,8 +200,8 @@ int rudp_test_scheduler_send(void *context, const struct rudp_peer *peer,
     dropped = action == RUDP_TEST_DROP;
     if (action == RUDP_TEST_PASS) {
         dropped = scheduler->impairment.random_loss_percent >= 0
-                      ? random_percent(scheduler, link->direction,
-                                       (unsigned int)scheduler->impairment.random_loss_percent)
+                      ? scheduled_percent(scheduler, link->direction,
+                                          (unsigned int)scheduler->impairment.random_loss_percent)
                       : native_profile_drop(scheduler, link->direction);
     }
     event = (struct rudp_test_trace_event){

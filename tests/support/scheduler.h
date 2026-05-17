@@ -87,6 +87,7 @@ struct rudp_test_scheduler {
     size_t queued_count;
     struct rudp_test_impairment impairment;
     uint64_t original_datagrams[2];
+    unsigned int loss_accumulator[2];
     bool leo_bad_state[2];
     struct rudp_test_trace_event trace[RUDP_TEST_TRACE_CAPACITY];
     size_t trace_count;

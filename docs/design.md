@@ -129,6 +129,17 @@ record is emitted on exit, including byte, packet, malformed-packet, RTT-sample,
 and retransmission counters. These are correctness diagnostics, not benchmark
 speed claims.
 
+The deterministic correctness matrix uses independent directional seeds. Each
+finite random-loss override is an evenly distributed seeded schedule, so it is
+finite and reproducible rather than a request for probabilistic eventual
+success. Before the asserted run, the harness evaluates the complete schedule
+once and records whether the protocol reaches success, timeout, or
+completion-unknown; the asserted run must reproduce that declared outcome.
+The 100-percent override must reach a bounded deadline failure without output.
+Native profile loss remains a separate case. Every event needed to reproduce a
+mismatch is retained and printed, including direction, original-datagram
+number, time, due time, packet type/sequence, and applied actions.
+
 ## Phase 6 file boundary and CLI
 
 `rudp send HOST PORT INPUT` snapshots a regular source file into bounded memory,

@@ -10,6 +10,7 @@
 
 #define RUDP_TEST_MAX_RULES 64U
 #define RUDP_TEST_MAX_QUEUED_PACKETS 512U
+#define RUDP_TEST_TRACE_CAPACITY 16384U
 
 enum rudp_test_direction {
     RUDP_TEST_FORWARD,
@@ -22,6 +23,38 @@ enum rudp_test_action {
     RUDP_TEST_DELAY,
     RUDP_TEST_DUPLICATE,
     RUDP_TEST_CORRUPT,
+};
+
+enum rudp_test_profile {
+    RUDP_TEST_PROFILE_NONE,
+    RUDP_TEST_PROFILE_TERRESTRIAL,
+    RUDP_TEST_PROFILE_GEO,
+    RUDP_TEST_PROFILE_LEO,
+};
+
+enum rudp_test_mode {
+    RUDP_TEST_MODE_NONE,
+    RUDP_TEST_MODE_REORDER,
+    RUDP_TEST_MODE_DUPLICATE,
+    RUDP_TEST_MODE_COMBINED,
+};
+
+struct rudp_test_impairment {
+    enum rudp_test_profile profile;
+    enum rudp_test_mode mode;
+    int random_loss_percent;
+};
+
+struct rudp_test_trace_event {
+    uint64_t number;
+    uint64_t at_ms;
+    uint64_t due_ms;
+    enum rudp_test_direction direction;
+    enum rudp_packet_type type;
+    uint32_t sequence;
+    bool dropped;
+    bool duplicated;
+    bool reordered;
 };
 
 struct rudp_test_rule {
@@ -52,6 +85,12 @@ struct rudp_test_scheduler {
     size_t rule_count;
     struct rudp_test_datagram queue[RUDP_TEST_MAX_QUEUED_PACKETS];
     size_t queued_count;
+    struct rudp_test_impairment impairment;
+    uint64_t original_datagrams[2];
+    bool leo_bad_state[2];
+    struct rudp_test_trace_event trace[RUDP_TEST_TRACE_CAPACITY];
+    size_t trace_count;
+    bool trace_truncated;
 };
 
 struct rudp_test_link {
@@ -64,6 +103,11 @@ typedef void (*rudp_test_deliver_fn)(void *context, enum rudp_test_direction dir
 
 void rudp_test_scheduler_init(struct rudp_test_scheduler *scheduler, uint32_t forward_seed,
                               uint32_t reverse_seed);
+void rudp_test_scheduler_set_impairment(struct rudp_test_scheduler *scheduler,
+                                        const struct rudp_test_impairment *impairment);
+uint64_t rudp_test_profile_one_way_ms(enum rudp_test_profile profile);
+const char *rudp_test_profile_name(enum rudp_test_profile profile);
+const char *rudp_test_mode_name(enum rudp_test_mode mode);
 bool rudp_test_scheduler_add_rule(struct rudp_test_scheduler *scheduler,
                                   const struct rudp_test_rule *rule);
 uint32_t rudp_test_scheduler_random(struct rudp_test_scheduler *scheduler,

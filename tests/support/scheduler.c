@@ -49,6 +49,33 @@ void rudp_test_scheduler_init(struct rudp_test_scheduler *scheduler, uint32_t fo
     scheduler->random_state[RUDP_TEST_REVERSE] = reverse_seed == 0U ? 1U : reverse_seed;
 }
 
+void rudp_test_scheduler_set_impairment(struct rudp_test_scheduler *scheduler,
+                                        const struct rudp_test_impairment *impairment)
+{
+    scheduler->impairment = *impairment;
+}
+
+uint64_t rudp_test_profile_one_way_ms(enum rudp_test_profile profile)
+{
+    static const uint64_t delays[] = {0U, 25U, 300U, 20U};
+
+    return (unsigned int)profile < sizeof(delays) / sizeof(delays[0]) ? delays[profile] : 0U;
+}
+
+const char *rudp_test_profile_name(enum rudp_test_profile profile)
+{
+    static const char *const names[] = {"none", "terrestrial", "geo", "leo"};
+
+    return (unsigned int)profile < sizeof(names) / sizeof(names[0]) ? names[profile] : "invalid";
+}
+
+const char *rudp_test_mode_name(enum rudp_test_mode mode)
+{
+    static const char *const names[] = {"none", "reorder", "duplicate", "combined"};
+
+    return (unsigned int)mode < sizeof(names) / sizeof(names[0]) ? names[mode] : "invalid";
+}
+
 bool rudp_test_scheduler_add_rule(struct rudp_test_scheduler *scheduler,
                                   const struct rudp_test_rule *rule)
 {
@@ -72,6 +99,45 @@ uint32_t rudp_test_scheduler_random(struct rudp_test_scheduler *scheduler,
     return state;
 }
 
+static bool random_percent(struct rudp_test_scheduler *scheduler,
+                           enum rudp_test_direction direction, unsigned int percent)
+{
+    return rudp_test_scheduler_random(scheduler, direction) % 100U < percent;
+}
+
+static bool native_profile_drop(struct rudp_test_scheduler *scheduler,
+                                enum rudp_test_direction direction)
+{
+    switch (scheduler->impairment.profile) {
+    case RUDP_TEST_PROFILE_TERRESTRIAL:
+        return rudp_test_scheduler_random(scheduler, direction) % 1000U == 0U;
+    case RUDP_TEST_PROFILE_GEO:
+        return rudp_test_scheduler_random(scheduler, direction) % 100U < 2U;
+    case RUDP_TEST_PROFILE_LEO:
+        if (scheduler->leo_bad_state[direction]) {
+            if (random_percent(scheduler, direction, 20U)) {
+                scheduler->leo_bad_state[direction] = false;
+            }
+        } else if (random_percent(scheduler, direction, 1U)) {
+            scheduler->leo_bad_state[direction] = true;
+        }
+        return scheduler->leo_bad_state[direction];
+    case RUDP_TEST_PROFILE_NONE:
+        return false;
+    }
+    return false;
+}
+
+static void record_trace(struct rudp_test_scheduler *scheduler,
+                         const struct rudp_test_trace_event *event)
+{
+    if (scheduler->trace_count < RUDP_TEST_TRACE_CAPACITY) {
+        scheduler->trace[scheduler->trace_count++] = *event;
+    } else {
+        scheduler->trace_truncated = true;
+    }
+}
+
 uint64_t rudp_test_scheduler_now(void *context)
 {
     return ((struct rudp_test_scheduler *)context)->now_ms;
@@ -83,7 +149,14 @@ int rudp_test_scheduler_send(void *context, const struct rudp_peer *peer,
     struct rudp_test_link *link = context;
     struct rudp_test_scheduler *scheduler = link->scheduler;
     enum rudp_test_action action = RUDP_TEST_PASS;
-    uint64_t delay_ms = 0U;
+    uint64_t delay_ms = rudp_test_profile_one_way_ms(scheduler->impairment.profile);
+    uint64_t number = ++scheduler->original_datagrams[link->direction];
+    bool reordered = scheduler->impairment.mode == RUDP_TEST_MODE_REORDER ||
+                     scheduler->impairment.mode == RUDP_TEST_MODE_COMBINED;
+    bool duplicated = scheduler->impairment.mode == RUDP_TEST_MODE_DUPLICATE ||
+                      scheduler->impairment.mode == RUDP_TEST_MODE_COMBINED;
+    bool dropped;
+    struct rudp_test_trace_event event;
     size_t index;
 
     (void)peer;
@@ -100,15 +173,45 @@ int rudp_test_scheduler_send(void *context, const struct rudp_peer *peer,
             break;
         }
     }
-    if (action == RUDP_TEST_DROP) {
+    if (action == RUDP_TEST_PASS) {
+        if (reordered && number % 7U == 0U) {
+            delay_ms += 4U * rudp_test_profile_one_way_ms(scheduler->impairment.profile);
+        }
+        duplicated = duplicated && number % 11U == 0U;
+    } else {
+        reordered = false;
+        duplicated = action == RUDP_TEST_DUPLICATE;
+    }
+    dropped = action == RUDP_TEST_DROP;
+    if (action == RUDP_TEST_PASS) {
+        dropped = scheduler->impairment.random_loss_percent >= 0
+                      ? random_percent(scheduler, link->direction,
+                                       (unsigned int)scheduler->impairment.random_loss_percent)
+                      : native_profile_drop(scheduler, link->direction);
+    }
+    event = (struct rudp_test_trace_event){
+        .number = number,
+        .at_ms = scheduler->now_ms,
+        .due_ms = scheduler->now_ms + delay_ms,
+        .direction = link->direction,
+        .type = packet->type,
+        .sequence = packet->seq,
+        .dropped = dropped,
+        .duplicated = duplicated,
+        .reordered = reordered && number % 7U == 0U,
+    };
+    record_trace(scheduler, &event);
+    if (dropped) {
         return 0;
     }
     if (!enqueue(scheduler, link->direction, packet, scheduler->now_ms + delay_ms,
                  action == RUDP_TEST_CORRUPT)) {
         return -1;
     }
-    if (action == RUDP_TEST_DUPLICATE &&
-        !enqueue(scheduler, link->direction, packet, scheduler->now_ms + delay_ms + 1U, false)) {
+    if (duplicated && !enqueue(scheduler, link->direction, packet,
+                               scheduler->now_ms + delay_ms +
+                                   rudp_test_profile_one_way_ms(scheduler->impairment.profile),
+                               false)) {
         return -1;
     }
     return 0;

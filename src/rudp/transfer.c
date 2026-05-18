@@ -106,10 +106,15 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
 {
     const uint64_t now = sender_now(sender);
 
+    if (rudp_send_scoreboard_flight(&sender->scoreboard) == 0U) {
+        rudp_aimd_resume_after_idle(&sender->congestion, now, sender->rtt.current_rto_ms,
+                                    sender_credit_blocked(sender));
+    }
+    sender->pacing_timer_ms = 0U;
     while (sender->offset < sender->source_length &&
            rudp_send_scoreboard_retained(&sender->scoreboard) < RUDP_WINDOW_CAPACITY &&
            rudp_send_scoreboard_flight(&sender->scoreboard) <
-               rudp_fixed_cc_window(&sender->congestion) &&
+               rudp_aimd_window(&sender->congestion) &&
            rudp_seq_in_window(sender->scoreboard.next_sequence, sender->scoreboard.cumulative_ack,
                               sender->scoreboard.receive_limit)) {
         size_t length = sender->source_length - sender->offset;
@@ -117,6 +122,13 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
 
         if (length > RUDP_MAX_DATA_PAYLOAD) {
             length = RUDP_MAX_DATA_PAYLOAD;
+        }
+        if (!rudp_pacer_take(&sender->pacer, now, sender->congestion.cwnd,
+                             sender->rtt.initialized ? sender->rtt.srtt_ms : 0.0, length)) {
+            sender->pacing_timer_ms =
+                rudp_pacer_next_ms(&sender->pacer, now, sender->congestion.cwnd,
+                                   sender->rtt.initialized ? sender->rtt.srtt_ms : 0.0, length);
+            break;
         }
         if (!rudp_send_scoreboard_track(&sender->scoreboard, sender->scoreboard.next_sequence,
                                         sender->source + sender->offset, (uint16_t)length)) {
@@ -128,6 +140,7 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
         if (send_data_slot(sender, slot) != RUDP_TRANSFER_OK) {
             return sender->error;
         }
+        rudp_aimd_on_data_send(&sender->congestion, now);
         sender->offset += length;
         if (sender->data_timer_ms == 0U) {
             sender->data_timer_ms = (double)now + sender->rtt.current_rto_ms;
@@ -168,18 +181,36 @@ rudp_windowed_sender_start(struct rudp_windowed_sender *sender, const struct rud
     sender->source_length = source_length;
     memcpy(sender->digest, digest, sizeof(sender->digest));
     rudp_send_scoreboard_init(&sender->scoreboard, 0U, initial_receive_limit);
-    rudp_fixed_cc_init(&sender->congestion, fixed_window);
+    rudp_aimd_init(&sender->congestion, fixed_window);
     rudp_rtt_estimator_init(&sender->rtt);
     sender->started_ms = sender_now(sender);
+    rudp_pacer_init(&sender->pacer, sender->started_ms);
     sender->progress_deadline_ms = sender->started_ms + RUDP_DATA_PROGRESS_TIMEOUT_MS;
     return sender_fill_window(sender);
 }
 
-static enum rudp_transfer_error sender_retransmit_fast(struct rudp_windowed_sender *sender)
+static enum rudp_transfer_error sender_retransmit_fast(struct rudp_windowed_sender *sender,
+                                                       size_t pre_ack_flight)
 {
     struct rudp_send_slot *slot;
+    bool reduced = false;
 
     while ((slot = rudp_send_scoreboard_next_fast_retransmit(&sender->scoreboard)) != NULL) {
+        const uint64_t now = sender_now(sender);
+
+        if (!rudp_pacer_take(&sender->pacer, now, sender->congestion.cwnd,
+                             sender->rtt.initialized ? sender->rtt.srtt_ms : 0.0, slot->length)) {
+            slot->needs_fast_retransmit = true;
+            sender->pacing_timer_ms = rudp_pacer_next_ms(
+                &sender->pacer, now, sender->congestion.cwnd,
+                sender->rtt.initialized ? sender->rtt.srtt_ms : 0.0, slot->length);
+            break;
+        }
+        if (!reduced) {
+            rudp_aimd_on_fast_loss(&sender->congestion, pre_ack_flight,
+                                   sender->scoreboard.next_sequence - 1U);
+            reduced = true;
+        }
         if (send_data_slot(sender, slot) != RUDP_TRANSFER_OK) {
             return sender->error;
         }
@@ -192,6 +223,8 @@ static enum rudp_transfer_error sender_retransmit_fast(struct rudp_windowed_send
 enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sender *sender,
                                                       const struct rudp_packet *packet)
 {
+    size_t pre_ack_flight;
+
     if (sender == NULL || packet == NULL) {
         return RUDP_TRANSFER_ERR_ARGUMENT;
     }
@@ -214,6 +247,7 @@ enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sende
     if (sender->state != RUDP_TRANSFER_SENDING || packet->type != RUDP_PACKET_ACK) {
         return RUDP_TRANSFER_ERR_PACKET;
     }
+    pre_ack_flight = rudp_send_scoreboard_flight(&sender->scoreboard);
     {
         struct rudp_ack_update update;
         const enum rudp_ack_result result =
@@ -225,6 +259,7 @@ enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sende
         }
         if (result == RUDP_ACK_CHANGED) {
             const uint64_t now = sender_now(sender);
+            const uint32_t newly_delivered = update.newly_acked + update.newly_sacked;
 
             if (update.cumulative_advanced || update.newly_sacked != 0U) {
                 sender->progress_deadline_ms = now + RUDP_DATA_PROGRESS_TIMEOUT_MS;
@@ -246,9 +281,10 @@ enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sende
             } else if (rudp_send_scoreboard_flight(&sender->scoreboard) == 0U) {
                 sender->data_timer_ms = 0.0;
             }
+            rudp_aimd_on_ack(&sender->congestion, newly_delivered, packet->ack);
         }
     }
-    if (sender_retransmit_fast(sender) != RUDP_TRANSFER_OK) {
+    if (sender_retransmit_fast(sender, pre_ack_flight) != RUDP_TRANSFER_OK) {
         return sender->error;
     }
     return sender_fill_window(sender);
@@ -304,6 +340,18 @@ enum rudp_transfer_error rudp_windowed_sender_tick(struct rudp_windowed_sender *
         struct rudp_send_slot *slot = lowest_unsacked(&sender->scoreboard);
 
         if (slot != NULL) {
+            const size_t flight = rudp_send_scoreboard_flight(&sender->scoreboard);
+
+            if (!rudp_pacer_take(&sender->pacer, now, sender->congestion.cwnd,
+                                 sender->rtt.initialized ? sender->rtt.srtt_ms : 0.0,
+                                 slot->length)) {
+                sender->pacing_timer_ms = rudp_pacer_next_ms(
+                    &sender->pacer, now, sender->congestion.cwnd,
+                    sender->rtt.initialized ? sender->rtt.srtt_ms : 0.0, slot->length);
+                return RUDP_TRANSFER_OK;
+            }
+            rudp_aimd_on_timeout(&sender->congestion, flight,
+                                 sender->scoreboard.next_sequence - 1U);
             if (send_data_slot(sender, slot) != RUDP_TRANSFER_OK) {
                 return sender->error;
             }
@@ -331,7 +379,12 @@ enum rudp_transfer_error rudp_windowed_sender_tick(struct rudp_windowed_sender *
         }
         sender->probe_timer_ms = now + sender->probe_delay_ms;
     }
-    return RUDP_TRANSFER_OK;
+    if (sender->pacing_timer_ms != 0U && now >= sender->pacing_timer_ms &&
+        sender_retransmit_fast(sender, rudp_send_scoreboard_flight(&sender->scoreboard)) !=
+            RUDP_TRANSFER_OK) {
+        return sender->error;
+    }
+    return sender_fill_window(sender);
 }
 
 static void receiver_make_ack(const struct rudp_windowed_receiver *receiver,

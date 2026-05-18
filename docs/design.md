@@ -129,6 +129,22 @@ record is emitted on exit, including byte, packet, malformed-packet, RTT-sample,
 and retransmission counters. These are correctness diagnostics, not benchmark
 speed claims.
 
+## Phase 7 AIMD and pacing
+
+Production windowed senders now use RUDP-AIMD. The initial congestion window is
+10 packets (or the configured smaller maximum), while the receiver window stays
+the hard upper bound. Newly delivered packets grow the window exactly once,
+whether learned through cumulative ACK or SACK. A fast-loss episode halves the
+pre-ACK flight and suppresses further growth/reduction until the cumulative ACK
+passes the highest sequence sent at entry. Every RTO restarts that boundary,
+sets the window to one, and retains a floor of two for `ssthresh`.
+
+DATA and retransmissions share a token-bucket pacer with a two-datagram burst.
+Its payload rate is `cwnd * 1024 / RTT`; the initial unsampled RTT is 1000 ms.
+Credit-limited pauses do not trigger idle restart. A genuinely idle sender that
+resumes after at least one current RTO caps its window at 10 without changing
+`ssthresh`.
+
 The deterministic correctness matrix uses independent directional seeds. Each
 finite random-loss override is an evenly distributed seeded schedule, so it is
 finite and reproducible rather than a request for probabilistic eventual

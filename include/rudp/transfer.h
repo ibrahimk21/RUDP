@@ -22,7 +22,9 @@ struct rudp_windowed_sender {
     size_t offset;
     uint8_t digest[16];
     struct rudp_send_scoreboard scoreboard;
-    struct rudp_fixed_cc congestion;
+    struct rudp_aimd_cc congestion;
+    struct rudp_pacer pacer;
+    uint64_t pacing_timer_ms;
     struct rudp_rtt_estimator rtt;
     uint64_t started_ms;
     uint64_t progress_deadline_ms;

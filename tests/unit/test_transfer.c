@@ -194,7 +194,8 @@ static void test_windowed_recovery(void)
     transfer_pair_start(pair);
     transfer_pair_run(pair, 5000U);
     assert(pair->sender->state == RUDP_TRANSFER_COMPLETE);
-    assert(pair->sender->fast_retransmits >= 2U);
+    /* Pacing prevents the delayed early packet from accumulating false loss evidence. */
+    assert(pair->sender->fast_retransmits >= 1U);
     assert(pair->sink.finished);
     assert(pair->sink.length == pair->source_length);
     assert(memcmp(pair->sink.bytes, pair->source, pair->source_length) == 0);

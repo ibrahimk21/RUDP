@@ -1,5 +1,6 @@
 #include "rudp/file.h"
 
+#include "rudp/io.h"
 #include "rudp/session.h"
 
 #include <errno.h>
@@ -13,6 +14,19 @@ static bool same_identity(const struct stat *left, const struct stat *right)
     return left->st_dev == right->st_dev && left->st_ino == right->st_ino &&
            left->st_size == right->st_size && left->st_mtim.tv_sec == right->st_mtim.tv_sec &&
            left->st_mtim.tv_nsec == right->st_mtim.tv_nsec;
+}
+
+struct file_write_context {
+    int fd;
+    size_t calls;
+};
+
+static ssize_t file_write(void *context, const uint8_t *bytes, size_t length)
+{
+    struct file_write_context *writer = context;
+
+    writer->calls += 1U;
+    return write(writer->fd, bytes, length);
 }
 
 static int hash_path(const char *path, struct stat *identity, uint8_t digest[16],
@@ -148,23 +162,18 @@ int rudp_output_open(struct rudp_output_file *output, const char *destination)
 int rudp_output_append(void *context, const uint8_t *bytes, size_t length)
 {
     struct rudp_output_file *output = context;
-    size_t written = 0U;
+    struct file_write_context writer;
 
-    if (output == NULL || output->stream == NULL ||
-        output->length + length > RUDP_MAX_TRANSFER_LENGTH) {
+    if (output == NULL || output->fd < 0 || output->length + length > RUDP_MAX_TRANSFER_LENGTH) {
         errno = EFBIG;
         return -1;
     }
-    while (written != length) {
-        size_t count = fwrite(bytes + written, 1U, length - written, output->stream);
-
-        if (count == 0U) {
-            return -1;
-        }
-        rudp_md5_update(&output->md5, bytes + written, count);
-        output->length += count;
-        written += count;
+    writer = (struct file_write_context){output->fd, 0U};
+    if (rudp_write_all(file_write, &writer, bytes, length) != 0) {
+        return -1;
     }
+    rudp_md5_update(&output->md5, bytes, length);
+    output->length += length;
     return 0;
 }
 

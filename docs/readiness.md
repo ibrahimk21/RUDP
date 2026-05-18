@@ -3,6 +3,12 @@
 Status recorded on 2026-09-06. These gates intentionally answer different
 questions; benchmark limitations do not prevent deterministic protocol work.
 
+Phase 6's integration suite reports the terrestrial, GEO, and synthetic LEO
+live-profile cases as `UNAVAILABLE` on this host because the isolated netem/HTB
+topology cannot be created without CAP_NET_ADMIN. The 756 deterministic profile
+and random-override cases still run locally. Privileged live-profile coverage
+remains a Phase 8 prerequisite rather than being silently treated as passed.
+
 | Gate | Status | Meaning |
 |---|---|---|
 | `correctness_ready` | **yes** | Ubuntu/WSL2 has GCC 13.3, Make 4.3, and Python 3.12. The Phase 0 stubs build and the empty unit/integration runners complete. This is sufficient for Phases 1-7 local development and deterministic tests. |

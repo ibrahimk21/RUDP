@@ -17,6 +17,10 @@ if ((${#tests[@]} == 0)); then
   exit 0
 fi
 
+timeout_seconds=30
+if [[ "$build_dir" == */sanitize ]]; then
+  timeout_seconds=90
+fi
 for test_bin in "${tests[@]}"; do
-  timeout 30s "$test_bin"
+  timeout "${timeout_seconds}s" "$test_bin"
 done

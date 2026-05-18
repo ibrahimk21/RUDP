@@ -11,10 +11,16 @@
 static void write_exact(const char *path, const uint8_t *bytes, size_t length)
 {
     FILE *stream = fopen(path, "wb");
+    size_t written;
+    int close_result;
 
-    assert(stream != NULL);
-    assert(fwrite(bytes, 1U, length, stream) == length);
-    assert(fclose(stream) == 0);
+    if (stream == NULL) {
+        abort();
+    }
+    written = fwrite(bytes, 1U, length, stream);
+    close_result = fclose(stream);
+    assert(written == length);
+    assert(close_result == 0);
 }
 
 int main(void)
@@ -28,6 +34,8 @@ int main(void)
     uint8_t digest[16];
     uint8_t readback[sizeof(content)];
     FILE *stream;
+    size_t read_length;
+    int close_result;
 
     assert(mkdtemp(directory) != NULL);
     assert(snprintf(source_path, sizeof(source_path), "%s/source", directory) > 0);
@@ -45,9 +53,13 @@ int main(void)
     assert(rudp_output_finish(&output, sizeof(content), digest) == 0);
     assert(output.committed);
     stream = fopen(output_path, "rb");
-    assert(stream != NULL);
-    assert(fread(readback, 1U, sizeof(readback), stream) == sizeof(readback));
-    assert(fclose(stream) == 0);
+    if (stream == NULL) {
+        abort();
+    }
+    read_length = fread(readback, 1U, sizeof(readback), stream);
+    close_result = fclose(stream);
+    assert(read_length == sizeof(readback));
+    assert(close_result == 0);
     assert(memcmp(readback, content, sizeof(content)) == 0);
     rudp_output_abort(&output);
 

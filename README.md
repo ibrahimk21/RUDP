@@ -5,9 +5,10 @@ laboratory project for ordered delivery, bounded failure, and congestion-control
 experiments on controlled Linux network profiles. It is not authenticated,
 encrypted, or intended for deployment on the public Internet.
 
-Phases 0 through 5 are complete. The repository contains the validated packet
+Phases 0 through 6 are complete. The repository contains the validated packet
 codec and setup state machine, bounded reliable transfers, deterministic
-impairment scheduling, window/flow control, SACK recovery, and adaptive timers.
+impairment scheduling, window/flow control, SACK recovery, adaptive timers, and
+a checked file-transfer CLI with deterministic correctness coverage.
 
 ## Supported development environment
 

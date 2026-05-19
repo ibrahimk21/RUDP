@@ -132,7 +132,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 
 - [x] Implement RUDP-AIMD and shared pacing. Test ACK accounting, loss episodes, cwnd floors, RTO restart, small windows and idle/credit-limited behavior. After an idle period >=RTO cap cwnd at 10 before resuming; retain ssthresh.
 - [x] Build TCP tools using the same file/status semantics, checked partial stream I/O, and benchmark record codec. Select CUBIC/BBR per socket and verify with getsockopt; fail a requested unavailable algorithm. Record TCP_INFO and actual socket buffer sizes.
-- [ ] Build paced raw-UDP reference with record IDs, payload validation, receiver unique-byte accounting and bounded completion through the harness control channel; it performs no retransmissions.
+- [x] Build paced raw-UDP reference with record IDs, payload validation, receiver unique-byte accounting and bounded completion through the harness control channel; it performs no retransmissions.
 - [ ] Add the timed benchmark stream mode, common monotonic record timestamps and process CPU timers defined in BENCHMARKING.md. FIN still validates final bytes/digest. Verify TCP and RUDP file outputs and benchmark generators independently.
 
 **Checkpoint:** AIMD passes all reliability tests; both TCP algorithms pass where available; raw UDP correctly reports deliberate loss/duplicates. Any unavailable BBR gate stays open, never silently uses another CC.

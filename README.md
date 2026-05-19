@@ -47,6 +47,17 @@ congestion-control algorithm:
 Replace `cubic` with `bbr` only on hosts where the kernel exposes BBR; an
 unavailable request fails instead of falling back.
 
+The unreliable UDP reference uses separate data and out-of-path control ports:
+
+```sh
+./build/udp_ref receive 9002 9003
+./build/udp_ref send 127.0.0.1 9002 9003 10000
+```
+
+The optional final sender argument is a wire-rate budget in bits per second;
+the default is 20,000,000. Its result reports unique bytes, duplicates,
+invalid records, and missing records, and never retransmits DATA.
+
 Each process prints one JSON status record. A receiver remains available for
 the protocol's bounded FIN linger before exiting successfully.
 

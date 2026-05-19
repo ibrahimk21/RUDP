@@ -16,6 +16,9 @@ struct rudp_benchmark_record {
     uint64_t packets_sent;
     uint64_t packets_received;
     uint64_t malformed_packets;
+    uint64_t unique_bytes;
+    uint64_t duplicate_records;
+    uint64_t missing_records;
     uint32_t fast_retransmits;
     uint32_t timeout_retransmits;
     uint32_t clean_rtt_samples;

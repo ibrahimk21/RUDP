@@ -44,13 +44,15 @@ int rudp_benchmark_record_write(FILE *stream, const struct rudp_benchmark_record
         return -1;
     if (fprintf(stream,
                 ",\"bytes\":%" PRIu64 ",\"packets_sent\":%" PRIu64 ",\"packets_received\":%" PRIu64
-                ",\"malformed_packets\":%" PRIu64
+                ",\"malformed_packets\":%" PRIu64 ",\"unique_bytes\":%" PRIu64
+                ",\"duplicate_records\":%" PRIu64 ",\"missing_records\":%" PRIu64
                 ",\"fast_retransmits\":%u,\"timeout_retransmits\":%u"
                 ",\"clean_rtt_samples\":%u,\"suppressed_rtt_samples\":%u"
                 ",\"tcp_snd_cwnd\":%u,\"tcp_rtt_us\":%u,\"tcp_retransmits\":%u"
                 ",\"socket_send_buffer\":%d,\"socket_receive_buffer\":%d}\n",
                 record->bytes, record->packets_sent, record->packets_received,
-                record->malformed_packets, record->fast_retransmits, record->timeout_retransmits,
+                record->malformed_packets, record->unique_bytes, record->duplicate_records,
+                record->missing_records, record->fast_retransmits, record->timeout_retransmits,
                 record->clean_rtt_samples, record->suppressed_rtt_samples, record->tcp_snd_cwnd,
                 record->tcp_rtt_us, record->tcp_retransmits, record->socket_send_buffer,
                 record->socket_receive_buffer) < 0)

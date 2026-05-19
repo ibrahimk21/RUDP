@@ -66,9 +66,9 @@ $(TCP_REF): src/tcp_ref/tcp_ref.c $(LIBRARY)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LIBRARY) $(LDFLAGS) $(LDLIBS) -o $@
 
-$(UDP_REF): src/udp_ref/udp_ref.c
+$(UDP_REF): src/udp_ref/udp_ref.c $(LIBRARY)
 	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LIBRARY) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(BUILD_DIR)/tests/unit/test_%: tests/unit/test_%.c $(LIBRARY) $(TEST_SUPPORT_OBJECTS)
 	@mkdir -p $(dir $@)

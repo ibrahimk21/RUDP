@@ -153,6 +153,15 @@ fails if the request is unavailable or the kernel selected something else.
 Final records use the shared JSON encoder and include selected `TCP_INFO`
 fields plus effective `SO_SNDBUF` and `SO_RCVBUF` values.
 
+The raw-UDP reference emits fixed 1024-byte records containing a big-endian
+record ID, monotonic offer timestamp, and deterministic body. It uses the
+shared two-packet pacer with a default 20-Mbit/s wire budget that includes the
+IPv4 and UDP headers. The receiver validates every body and counts unique
+bytes, duplicates, invalid records, and missing IDs. A separate TCP control
+connection—routed outside impairment by the benchmark harness—declares the
+finite record range, signals sender completion, returns the summary, and puts
+both endpoints under bounded idle/drain deadlines. DATA is never retransmitted.
+
 The deterministic correctness matrix uses independent directional seeds. Each
 finite random-loss override is an evenly distributed seeded schedule, so it is
 finite and reproducible rather than a request for probabilistic eventual

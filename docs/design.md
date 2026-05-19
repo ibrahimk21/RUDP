@@ -145,6 +145,14 @@ Credit-limited pauses do not trigger idle restart. A genuinely idle sender that
 resumes after at least one current RTO caps its window at 10 without changing
 `ssthresh`.
 
+The TCP reference uses the same prehashed source and atomic no-replace output
+boundary as RUDP, with an explicit fixed header on the byte stream carrying
+length and MD5. Every stream read/write is completed through a checked loop.
+Each socket requests either `cubic` or `bbr`, reads `TCP_CONGESTION` back, and
+fails if the request is unavailable or the kernel selected something else.
+Final records use the shared JSON encoder and include selected `TCP_INFO`
+fields plus effective `SO_SNDBUF` and `SO_RCVBUF` values.
+
 The deterministic correctness matrix uses independent directional seeds. Each
 finite random-loss override is an evenly distributed seeded schedule, so it is
 finite and reproducible rather than a request for probabilistic eventual

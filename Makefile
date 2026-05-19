@@ -62,9 +62,9 @@ $(CLI): src/cli/rudp.c $(LIBRARY)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LIBRARY) $(LDFLAGS) $(LDLIBS) -o $@
 
-$(TCP_REF): src/tcp_ref/tcp_ref.c
+$(TCP_REF): src/tcp_ref/tcp_ref.c $(LIBRARY)
 	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LIBRARY) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(UDP_REF): src/udp_ref/udp_ref.c
 	@mkdir -p $(dir $@)

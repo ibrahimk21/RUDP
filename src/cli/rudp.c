@@ -1,3 +1,4 @@
+#include "rudp/benchmark.h"
 #include "rudp/file.h"
 #include "rudp/session.h"
 #include "rudp/socket.h"
@@ -134,20 +135,25 @@ static const char *transfer_error_string(enum rudp_transfer_error error)
 static void print_status(const struct cli_context *cli, bool success, const char *stage,
                          const char *error)
 {
-    uint64_t bytes = cli->sending ? cli->source.length : cli->output.length;
-    uint32_t fast = cli->sender == NULL ? 0U : cli->sender->fast_retransmits;
-    uint32_t timeouts = cli->sender == NULL ? 0U : cli->sender->timeout_retransmits;
-    uint32_t clean = cli->sender == NULL ? 0U : cli->sender->clean_rtt_samples;
-    uint32_t suppressed = cli->sender == NULL ? 0U : cli->sender->suppressed_rtt_samples;
+    const struct rudp_benchmark_record record = {
+        .tool = "rudp",
+        .role = cli->sending ? "sender" : "receiver",
+        .status = success ? "success" : "failure",
+        .stage = stage,
+        .error = error,
+        .cc_requested = "aimd",
+        .cc_actual = "aimd",
+        .bytes = cli->sending ? cli->source.length : cli->output.length,
+        .packets_sent = cli->packets_sent,
+        .packets_received = cli->packets_received,
+        .malformed_packets = cli->malformed_packets,
+        .fast_retransmits = cli->sender == NULL ? 0U : cli->sender->fast_retransmits,
+        .timeout_retransmits = cli->sender == NULL ? 0U : cli->sender->timeout_retransmits,
+        .clean_rtt_samples = cli->sender == NULL ? 0U : cli->sender->clean_rtt_samples,
+        .suppressed_rtt_samples = cli->sender == NULL ? 0U : cli->sender->suppressed_rtt_samples,
+    };
 
-    printf("{\"status\":\"%s\",\"role\":\"%s\",\"stage\":\"%s\","
-           "\"error\":\"%s\",\"bytes\":%" PRIu64 ",\"packets_sent\":%" PRIu64
-           ",\"packets_received\":%" PRIu64 ",\"malformed_packets\":%" PRIu64
-           ",\"fast_retransmits\":%u,\"timeout_retransmits\":%u,"
-           "\"clean_rtt_samples\":%u,\"suppressed_rtt_samples\":%u}\n",
-           success ? "success" : "failure", cli->sending ? "sender" : "receiver", stage, error,
-           bytes, cli->packets_sent, cli->packets_received, cli->malformed_packets, fast, timeouts,
-           clean, suppressed);
+    (void)rudp_benchmark_record_write(stdout, &record);
 }
 
 static int start_transfer(struct cli_context *cli, const struct rudp_clock *clock,

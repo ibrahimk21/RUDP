@@ -36,6 +36,17 @@ already exist:
 ./build/rudp send 127.0.0.1 9000 source.bin
 ```
 
+The TCP reference has matching file semantics and requires an explicit
+congestion-control algorithm:
+
+```sh
+./build/tcp_ref receive 9001 received.bin cubic
+./build/tcp_ref send 127.0.0.1 9001 source.bin cubic
+```
+
+Replace `cubic` with `bbr` only on hosts where the kernel exposes BBR; an
+unavailable request fails instead of falling back.
+
 Each process prints one JSON status record. A receiver remains available for
 the protocol's bounded FIN linger before exiting successfully.
 

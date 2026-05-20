@@ -81,7 +81,33 @@ int main(void)
     assert(WIFEXITED(sender_status) && WEXITSTATUS(sender_status) == 0);
     assert(WIFEXITED(receiver_status) && WEXITSTATUS(receiver_status) == 0);
     assert_same_file(source, output);
+
+    assert(snprintf(port, sizeof(port), "%u", 40001U + (unsigned int)getpid() % 20000U) > 0);
+    receiver = fork();
+    assert(receiver >= 0);
+    if (receiver == 0) {
+        int null_fd = open("/dev/null", O_WRONLY);
+        if (null_fd >= 0)
+            (void)dup2(null_fd, STDOUT_FILENO);
+        execl(binary, binary, "receive", port, "-", "cubic", (char *)NULL);
+        _exit(127);
+    }
+    assert(nanosleep(&startup, NULL) == 0 || errno == EINTR);
+    sender = fork();
+    assert(sender >= 0);
+    if (sender == 0) {
+        int null_fd = open("/dev/null", O_WRONLY);
+        if (null_fd >= 0)
+            (void)dup2(null_fd, STDOUT_FILENO);
+        execl(binary, binary, "stream", "127.0.0.1", port, "50", "cubic", (char *)NULL);
+        _exit(127);
+    }
+    assert(waitpid(sender, &sender_status, 0) == sender);
+    assert(waitpid(receiver, &receiver_status, 0) == receiver);
+    assert(WIFEXITED(sender_status) && WEXITSTATUS(sender_status) == 0);
+    assert(WIFEXITED(receiver_status) && WEXITSTATUS(receiver_status) == 0);
+
     assert(unlink(source) == 0 && unlink(output) == 0 && rmdir(directory) == 0);
-    puts("TCP CUBIC reference transfer test passed");
+    puts("TCP CUBIC file and timed generator tests passed");
     return 0;
 }

@@ -1,6 +1,7 @@
 #include "rudp/benchmark.h"
 #include "rudp/congestion.h"
 #include "rudp/io.h"
+#include "rudp/record.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -35,6 +36,7 @@ struct udp_metrics {
     uint64_t missing;
     int send_buffer;
     int receive_buffer;
+    struct rudp_benchmark_clock benchmark_start;
 };
 
 static uint64_t monotonic_ms(void)
@@ -128,29 +130,12 @@ static int read_all(int fd, uint8_t *bytes, size_t length)
     return 0;
 }
 
-static void make_record(uint8_t record[UDP_REF_RECORD_SIZE], uint64_t id, uint64_t timestamp_ns)
-{
-    size_t index;
-    memcpy(record, "RDU1", 4U);
-    put_u64(record + 4U, id);
-    put_u64(record + 12U, timestamp_ns);
-    for (index = UDP_REF_BODY_OFFSET; index < UDP_REF_RECORD_SIZE; ++index)
-        record[index] = (uint8_t)(id * 31U + index * 17U);
-}
-
 static bool valid_record(const uint8_t record[UDP_REF_RECORD_SIZE], uint64_t count, uint64_t *id)
 {
-    size_t index;
-    if (memcmp(record, "RDU1", 4U) != 0)
-        return false;
-    *id = get_u64(record + 4U);
+    *id = rudp_record_id(record);
     if (*id >= count)
         return false;
-    for (index = UDP_REF_BODY_OFFSET; index < UDP_REF_RECORD_SIZE; ++index) {
-        if (record[index] != (uint8_t)(*id * 31U + index * 17U))
-            return false;
-    }
-    return true;
+    return rudp_record_validate(record, *id, NULL);
 }
 
 static int open_control_listener(uint16_t port)
@@ -247,7 +232,7 @@ static int run_sender(const char *host, uint16_t data_port, uint16_t control_por
                 (void)poll(NULL, 0U, wait_ms);
             }
         }
-        make_record(record, id, monotonic_ns());
+        rudp_record_make(record, id, monotonic_ns());
         if (send(udp_fd, record, sizeof(record), 0) != (ssize_t)sizeof(record))
             goto done;
         metrics->offered += 1U;
@@ -374,6 +359,8 @@ done:
 
 static void print_status(const struct udp_metrics *metrics, bool success, const char *error)
 {
+    struct rudp_benchmark_clock end = {0};
+    (void)rudp_benchmark_clock_read(&end);
     const struct rudp_benchmark_record record = {
         .tool = "udp_ref",
         .role = metrics->sending ? "sender" : "receiver",
@@ -389,6 +376,10 @@ static void print_status(const struct udp_metrics *metrics, bool success, const 
         .missing_records = metrics->missing,
         .socket_send_buffer = metrics->send_buffer,
         .socket_receive_buffer = metrics->receive_buffer,
+        .started_ns = metrics->benchmark_start.monotonic_ns,
+        .ended_ns = end.monotonic_ns,
+        .user_cpu_ns = end.user_cpu_ns - metrics->benchmark_start.user_cpu_ns,
+        .system_cpu_ns = end.system_cpu_ns - metrics->benchmark_start.system_cpu_ns,
     };
     (void)rudp_benchmark_record_write(stdout, &record);
 }
@@ -409,6 +400,7 @@ int main(int argc, char **argv)
     uint64_t count;
     uint64_t rate = UDP_REF_DEFAULT_RATE;
     int result;
+    (void)rudp_benchmark_clock_read(&metrics.benchmark_start);
     if ((argc == 6 || argc == 7) && strcmp(argv[1], "send") == 0) {
         metrics.sending = true;
         if (parse_u64(argv[3], 1U, UINT16_MAX, &data_port_value) != 0 ||

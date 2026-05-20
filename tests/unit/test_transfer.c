@@ -13,6 +13,36 @@ struct dynamic_sink {
     bool finished;
 };
 
+struct stream_sink {
+    struct rudp_md5 md5;
+    uint64_t records;
+    uint64_t length;
+    bool finished;
+};
+
+static int stream_sink_append(void *context, const uint8_t *bytes, size_t length)
+{
+    struct stream_sink *sink = context;
+    if (length != RUDP_BENCHMARK_RECORD_SIZE || !rudp_record_validate(bytes, sink->records, NULL))
+        return -1;
+    rudp_md5_update(&sink->md5, bytes, length);
+    sink->records += 1U;
+    sink->length += length;
+    return 0;
+}
+
+static int stream_sink_finish(void *context, uint64_t length, const uint8_t digest[16])
+{
+    struct stream_sink *sink = context;
+    struct rudp_md5 copy = sink->md5;
+    uint8_t actual[16];
+    rudp_md5_final(&copy, actual);
+    if (length != sink->length || memcmp(actual, digest, sizeof(actual)) != 0)
+        return -1;
+    sink->finished = true;
+    return 0;
+}
+
 struct transfer_pair {
     struct rudp_test_scheduler *scheduler;
     struct rudp_windowed_sender *sender;
@@ -470,6 +500,30 @@ static void test_memory_caps(void)
            RUDP_WINDOW_CAPACITY * (RUDP_MAX_DATA_PAYLOAD + 32U));
 }
 
+static void test_timed_stream_generator_and_final_digest(void)
+{
+    struct transfer_pair *pair = transfer_pair_create(0U, RUDP_WINDOW_CAPACITY);
+    struct stream_sink sink = {0};
+    const struct rudp_clock clock = {pair->scheduler, rudp_test_scheduler_now};
+    const struct rudp_session_io sender_io = {&pair->sender_link, rudp_test_scheduler_send};
+    const struct rudp_session_io receiver_io = {&pair->receiver_link, rudp_test_scheduler_send};
+    const struct rudp_peer peer = {.ipv4_address = UINT32_C(0x7f000001), .port = 1U};
+    const struct rudp_transfer_metadata metadata = {.length = UINT64_MAX};
+    const struct rudp_transfer_sink sink_api = {&sink, stream_sink_append, stream_sink_finish};
+
+    rudp_md5_init(&sink.md5);
+    assert(rudp_windowed_receiver_start(pair->receiver, &clock, &receiver_io, &peer, 11U, 22U,
+                                        &metadata, &sink_api) == RUDP_TRANSFER_OK);
+    assert(rudp_windowed_sender_start_stream(pair->sender, &clock, &sender_io, &peer, 11U, 22U,
+                                             100U, RUDP_WINDOW_CAPACITY,
+                                             RUDP_WINDOW_CAPACITY) == RUDP_TRANSFER_OK);
+    transfer_pair_run(pair, 5000U);
+    assert(pair->sender->state == RUDP_TRANSFER_COMPLETE);
+    assert(sink.finished && sink.records > 0U);
+    assert(sink.length == pair->sender->source_length);
+    transfer_pair_destroy(pair);
+}
+
 int main(void)
 {
     test_windowed_recovery();
@@ -481,6 +535,7 @@ int main(void)
     test_adaptive_timer_restart_and_sack_rules();
     test_timeout_backoff_ack_loss_and_karn_suppression();
     test_memory_caps();
+    test_timed_stream_generator_and_final_digest();
     puts("windowed transfer tests passed");
     return 0;
 }

@@ -14,6 +14,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "rudp/record.h"
+
 #define RECORD_SIZE 1024U
 
 static void put_u64(uint8_t *output, uint64_t value)
@@ -34,12 +36,7 @@ static uint64_t get_u64(const uint8_t *input)
 
 static void make_record(uint8_t record[RECORD_SIZE], uint64_t id)
 {
-    size_t index;
-    memcpy(record, "RDU1", 4U);
-    put_u64(record + 4U, id);
-    put_u64(record + 12U, 123U + id);
-    for (index = 20U; index < RECORD_SIZE; ++index)
-        record[index] = (uint8_t)(id * 31U + index * 17U);
+    rudp_record_make(record, id, 123U + id);
 }
 
 static void send_record(int fd, const struct sockaddr_in *peer, uint64_t id, bool corrupt)

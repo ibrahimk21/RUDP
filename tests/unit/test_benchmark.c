@@ -1,4 +1,5 @@
 #include "rudp/benchmark.h"
+#include "rudp/record.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -22,6 +23,10 @@ int main(void)
     char buffer[2048];
     FILE *stream = tmpfile();
     size_t length;
+    uint8_t generated[RUDP_BENCHMARK_RECORD_SIZE];
+    uint64_t timestamp;
+    struct rudp_benchmark_clock first;
+    struct rudp_benchmark_clock second;
 
     assert(stream != NULL);
     assert(rudp_benchmark_record_write(stream, &record) == 0);
@@ -31,7 +36,20 @@ int main(void)
     assert(strstr(buffer, "\"error\":\"quoted \\\"error\\\"\\u000a\"") != NULL);
     assert(strstr(buffer, "\"bytes\":42") != NULL);
     assert(strstr(buffer, "\"cc_requested\":\"bbr\"") != NULL);
-    assert(fclose(stream) == 0);
+    if (fclose(stream) != 0)
+        return 1;
+    stream = NULL;
+    rudp_record_make(generated, 77U, 123456789U);
+    assert(rudp_record_id(generated) == 77U);
+    assert(rudp_record_validate(generated, 77U, &timestamp));
+    assert(timestamp == 123456789U);
+    generated[500U] ^= 1U;
+    assert(!rudp_record_validate(generated, 77U, NULL));
+    assert(rudp_benchmark_clock_read(&first) == 0);
+    assert(rudp_benchmark_clock_read(&second) == 0);
+    assert(second.monotonic_ns >= first.monotonic_ns);
+    assert(second.user_cpu_ns >= first.user_cpu_ns);
+    assert(second.system_cpu_ns >= first.system_cpu_ns);
     puts("benchmark record codec tests passed");
     return 0;
 }

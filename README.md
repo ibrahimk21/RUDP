@@ -5,7 +5,7 @@ laboratory project for ordered delivery, bounded failure, and congestion-control
 experiments on controlled Linux network profiles. It is not authenticated,
 encrypted, or intended for deployment on the public Internet.
 
-Phases 0 through 6 are complete, with Phase 7 implementation in progress. The
+Phases 0 through 7 are complete. The
 repository contains the validated packet codec and setup state machine, bounded reliable transfers, deterministic
 impairment scheduling, window/flow control, SACK recovery, adaptive timers, and
 a checked file-transfer CLI with deterministic correctness coverage.
@@ -57,6 +57,20 @@ The unreliable UDP reference uses separate data and out-of-path control ports:
 The optional final sender argument is a wire-rate budget in bits per second;
 the default is 20,000,000. Its result reports unique bytes, duplicates,
 invalid records, and missing records, and never retransmits DATA.
+
+Reliable timed streams use the same deterministic 1024-byte record generator:
+
+```sh
+./build/rudp receive 9000 -
+./build/rudp stream 127.0.0.1 9000 1000
+
+./build/tcp_ref receive 9001 - cubic
+./build/tcp_ref stream 127.0.0.1 9001 1000 cubic
+```
+
+Durations are milliseconds. Status records include common monotonic boundaries
+and per-process user/system CPU time; reliable stream completion validates the
+generated record sequence, final byte count, and MD5.
 
 Each process prints one JSON status record. A receiver remains available for
 the protocol's bounded FIN linger before exiting successfully.

@@ -1,6 +1,28 @@
 #include "rudp/benchmark.h"
 
 #include <inttypes.h>
+#include <sys/resource.h>
+#include <time.h>
+
+static uint64_t timeval_ns(const struct timeval *value)
+{
+    return (uint64_t)value->tv_sec * UINT64_C(1000000000) + (uint64_t)value->tv_usec * 1000U;
+}
+
+int rudp_benchmark_clock_read(struct rudp_benchmark_clock *clock)
+{
+    struct timespec monotonic;
+    struct rusage usage;
+
+    if (clock == NULL || clock_gettime(CLOCK_MONOTONIC, &monotonic) != 0 ||
+        getrusage(RUSAGE_SELF, &usage) != 0)
+        return -1;
+    clock->monotonic_ns =
+        (uint64_t)monotonic.tv_sec * UINT64_C(1000000000) + (uint64_t)monotonic.tv_nsec;
+    clock->user_cpu_ns = timeval_ns(&usage.ru_utime);
+    clock->system_cpu_ns = timeval_ns(&usage.ru_stime);
+    return 0;
+}
 
 static int json_string(FILE *stream, const char *text)
 {
@@ -46,13 +68,15 @@ int rudp_benchmark_record_write(FILE *stream, const struct rudp_benchmark_record
                 ",\"bytes\":%" PRIu64 ",\"packets_sent\":%" PRIu64 ",\"packets_received\":%" PRIu64
                 ",\"malformed_packets\":%" PRIu64 ",\"unique_bytes\":%" PRIu64
                 ",\"duplicate_records\":%" PRIu64 ",\"missing_records\":%" PRIu64
-                ",\"fast_retransmits\":%u,\"timeout_retransmits\":%u"
+                ",\"started_ns\":%" PRIu64 ",\"ended_ns\":%" PRIu64 ",\"user_cpu_ns\":%" PRIu64
+                ",\"system_cpu_ns\":%" PRIu64 ",\"fast_retransmits\":%u,\"timeout_retransmits\":%u"
                 ",\"clean_rtt_samples\":%u,\"suppressed_rtt_samples\":%u"
                 ",\"tcp_snd_cwnd\":%u,\"tcp_rtt_us\":%u,\"tcp_retransmits\":%u"
                 ",\"socket_send_buffer\":%d,\"socket_receive_buffer\":%d}\n",
                 record->bytes, record->packets_sent, record->packets_received,
                 record->malformed_packets, record->unique_bytes, record->duplicate_records,
-                record->missing_records, record->fast_retransmits, record->timeout_retransmits,
+                record->missing_records, record->started_ns, record->ended_ns, record->user_cpu_ns,
+                record->system_cpu_ns, record->fast_retransmits, record->timeout_retransmits,
                 record->clean_rtt_samples, record->suppressed_rtt_samples, record->tcp_snd_cwnd,
                 record->tcp_rtt_us, record->tcp_retransmits, record->socket_send_buffer,
                 record->socket_receive_buffer) < 0)

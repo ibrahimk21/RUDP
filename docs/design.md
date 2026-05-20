@@ -162,6 +162,22 @@ connection—routed outside impairment by the benchmark harness—declares the
 finite record range, signals sender completion, returns the summary, and puts
 both endpoints under bounded idle/drain deadlines. DATA is never retransmitted.
 
+## Phase 7 benchmark streams and clocks
+
+Reliable benchmark streams generate the same 1024-byte application envelope:
+big-endian record ID, big-endian monotonic offer timestamp in nanoseconds, and
+a deterministic body validated independently from the transfer digest. RUDP
+maps one record to one DATA packet and holds FIN until the timed offer interval
+ends and all DATA is acknowledged. TCP handles stream splitting/coalescing with
+checked exact reads. Its fixed-size terminal record, and RUDP FIN, both carry
+the final byte count and MD5 for receiver validation.
+
+The shared benchmark record encoder also captures `CLOCK_MONOTONIC` boundaries
+and `getrusage` user/system CPU nanoseconds. Unit tests corrupt generated bodies
+and verify rejection; the RUDP fake-clock stream test validates ordered records
+and final digest, while the TCP live test exercises file and timed modes as
+separate transfers.
+
 The deterministic correctness matrix uses independent directional seeds. Each
 finite random-loss override is an evenly distributed seeded schedule, so it is
 finite and reproducible rather than a request for probabilistic eventual

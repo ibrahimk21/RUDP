@@ -2,6 +2,8 @@
 #define RUDP_TRANSFER_H
 
 #include "rudp/congestion.h"
+#include "rudp/md5.h"
+#include "rudp/record.h"
 #include "rudp/stopwait.h"
 #include "rudp/timer.h"
 #include "rudp/window.h"
@@ -38,6 +40,12 @@ struct rudp_windowed_sender {
     uint32_t timeout_retransmits;
     uint32_t clean_rtt_samples;
     uint32_t suppressed_rtt_samples;
+    bool streaming;
+    bool stream_finished;
+    uint64_t stream_end_ms;
+    uint64_t stream_record_id;
+    struct rudp_md5 stream_md5;
+    uint8_t stream_record[RUDP_BENCHMARK_RECORD_SIZE];
 };
 
 struct rudp_windowed_receiver {
@@ -63,6 +71,12 @@ rudp_windowed_sender_start(struct rudp_windowed_sender *sender, const struct rud
                            uint64_t client_nonce, uint64_t server_nonce, const uint8_t *source,
                            size_t source_length, const uint8_t digest[16], uint32_t fixed_window,
                            uint32_t initial_receive_limit);
+enum rudp_transfer_error
+rudp_windowed_sender_start_stream(struct rudp_windowed_sender *sender,
+                                  const struct rudp_clock *clock, const struct rudp_session_io *io,
+                                  const struct rudp_peer *peer, uint64_t client_nonce,
+                                  uint64_t server_nonce, uint64_t duration_ms,
+                                  uint32_t maximum_window, uint32_t initial_receive_limit);
 enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sender *sender,
                                                       const struct rudp_packet *packet);
 enum rudp_transfer_error rudp_windowed_sender_tick(struct rudp_windowed_sender *sender);

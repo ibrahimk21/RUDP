@@ -1,5 +1,6 @@
 #include "rudp/benchmark.h"
 #include "rudp/file.h"
+#include "rudp/record.h"
 #include "rudp/session.h"
 #include "rudp/socket.h"
 #include "rudp/transfer.h"
@@ -25,11 +26,44 @@ struct cli_context {
     struct rudp_output_file output;
     struct rudp_peer peer;
     bool sending;
+    bool streaming;
     bool transfer_started;
+    uint64_t stream_duration_ms;
+    uint64_t stream_records;
+    uint64_t stream_bytes;
+    struct rudp_md5 stream_md5;
     uint64_t packets_sent;
     uint64_t packets_received;
     uint64_t malformed_packets;
+    struct rudp_benchmark_clock benchmark_start;
 };
+
+static int stream_append(void *context, const uint8_t *bytes, size_t length)
+{
+    struct cli_context *cli = context;
+    if (length != RUDP_BENCHMARK_RECORD_SIZE ||
+        !rudp_record_validate(bytes, cli->stream_records, NULL)) {
+        errno = EBADMSG;
+        return -1;
+    }
+    rudp_md5_update(&cli->stream_md5, bytes, length);
+    cli->stream_records += 1U;
+    cli->stream_bytes += length;
+    return 0;
+}
+
+static int stream_finish(void *context, uint64_t length, const uint8_t digest[16])
+{
+    const struct cli_context *cli = context;
+    struct rudp_md5 copy = cli->stream_md5;
+    uint8_t actual[16];
+    rudp_md5_final(&copy, actual);
+    if (length != cli->stream_bytes || memcmp(actual, digest, sizeof(actual)) != 0) {
+        errno = EBADMSG;
+        return -1;
+    }
+    return 0;
+}
 
 static uint64_t monotonic_ms(void *unused)
 {
@@ -135,6 +169,8 @@ static const char *transfer_error_string(enum rudp_transfer_error error)
 static void print_status(const struct cli_context *cli, bool success, const char *stage,
                          const char *error)
 {
+    struct rudp_benchmark_clock end = {0};
+    (void)rudp_benchmark_clock_read(&end);
     const struct rudp_benchmark_record record = {
         .tool = "rudp",
         .role = cli->sending ? "sender" : "receiver",
@@ -143,7 +179,9 @@ static void print_status(const struct cli_context *cli, bool success, const char
         .error = error,
         .cc_requested = "aimd",
         .cc_actual = "aimd",
-        .bytes = cli->sending ? cli->source.length : cli->output.length,
+        .bytes = cli->streaming ? (cli->sending && cli->sender != NULL ? cli->sender->source_length
+                                                                       : cli->stream_bytes)
+                                : (cli->sending ? cli->source.length : cli->output.length),
         .packets_sent = cli->packets_sent,
         .packets_received = cli->packets_received,
         .malformed_packets = cli->malformed_packets,
@@ -151,6 +189,10 @@ static void print_status(const struct cli_context *cli, bool success, const char
         .timeout_retransmits = cli->sender == NULL ? 0U : cli->sender->timeout_retransmits,
         .clean_rtt_samples = cli->sender == NULL ? 0U : cli->sender->clean_rtt_samples,
         .suppressed_rtt_samples = cli->sender == NULL ? 0U : cli->sender->suppressed_rtt_samples,
+        .started_ns = cli->benchmark_start.monotonic_ns,
+        .ended_ns = end.monotonic_ns,
+        .user_cpu_ns = end.user_cpu_ns - cli->benchmark_start.user_cpu_ns,
+        .system_cpu_ns = end.system_cpu_ns - cli->benchmark_start.system_cpu_ns,
     };
 
     (void)rudp_benchmark_record_write(stdout, &record);
@@ -164,20 +206,35 @@ static int start_transfer(struct cli_context *cli, const struct rudp_clock *cloc
     }
     if (cli->sending) {
         cli->sender = calloc(1U, sizeof(*cli->sender));
-        if (cli->sender == NULL ||
-            rudp_windowed_sender_start(cli->sender, clock, io, &cli->session.peer,
-                                       cli->session.client_nonce, cli->session.server_nonce,
-                                       cli->source.bytes, cli->source.length, cli->source.digest,
-                                       RUDP_WINDOW_CAPACITY,
-                                       RUDP_INITIAL_RECEIVE_LIMIT) != RUDP_TRANSFER_OK) {
+        if (cli->sender == NULL)
+            return -1;
+        if (cli->streaming) {
+            if (rudp_windowed_sender_start_stream(
+                    cli->sender, clock, io, &cli->session.peer, cli->session.client_nonce,
+                    cli->session.server_nonce, cli->stream_duration_ms, RUDP_WINDOW_CAPACITY,
+                    RUDP_INITIAL_RECEIVE_LIMIT) != RUDP_TRANSFER_OK)
+                return -1;
+        } else if (rudp_windowed_sender_start(cli->sender, clock, io, &cli->session.peer,
+                                              cli->session.client_nonce, cli->session.server_nonce,
+                                              cli->source.bytes, cli->source.length,
+                                              cli->source.digest, RUDP_WINDOW_CAPACITY,
+                                              RUDP_INITIAL_RECEIVE_LIMIT) != RUDP_TRANSFER_OK) {
             return -1;
         }
     } else {
-        const struct rudp_transfer_sink sink = {
-            &cli->output,
-            rudp_output_append,
-            rudp_output_finish,
-        };
+        struct rudp_transfer_sink sink;
+
+        if ((cli->session.metadata.length == UINT64_MAX) != cli->streaming) {
+            errno = EPROTO;
+            return -1;
+        }
+        if (cli->streaming) {
+            sink = (struct rudp_transfer_sink){cli, stream_append, stream_finish};
+            rudp_md5_init(&cli->stream_md5);
+        } else {
+            sink =
+                (struct rudp_transfer_sink){&cli->output, rudp_output_append, rudp_output_finish};
+        }
 
         cli->receiver = calloc(1U, sizeof(*cli->receiver));
         if (cli->receiver == NULL ||
@@ -225,9 +282,11 @@ static int run(struct cli_context *cli)
     const struct rudp_random random = {NULL, secure_random};
 
     if (cli->sending) {
-        struct rudp_transfer_metadata metadata = {.length = cli->source.length};
+        struct rudp_transfer_metadata metadata = {.length = cli->streaming ? UINT64_MAX
+                                                                           : cli->source.length};
 
-        memcpy(metadata.digest, cli->source.digest, sizeof(metadata.digest));
+        if (!cli->streaming)
+            memcpy(metadata.digest, cli->source.digest, sizeof(metadata.digest));
         if (rudp_sender_start(&cli->session, &clock, &random, &io, &cli->peer, &metadata) !=
             RUDP_SESSION_OK) {
             return -1;
@@ -277,7 +336,7 @@ static int run(struct cli_context *cli)
                 return -1;
             }
             if (cli->sender->state == RUDP_TRANSFER_COMPLETE) {
-                return rudp_source_verify(&cli->source);
+                return cli->streaming ? 0 : rudp_source_verify(&cli->source);
             }
         } else {
             size_t consumed;
@@ -296,8 +355,26 @@ static int run(struct cli_context *cli)
 
 static void usage(const char *program)
 {
-    fprintf(stderr, "usage: %s send HOST PORT INPUT\n       %s receive PORT OUTPUT\n", program,
-            program);
+    fprintf(stderr,
+            "usage: %s send HOST PORT INPUT\n"
+            "       %s stream HOST PORT DURATION_MS\n"
+            "       %s receive PORT OUTPUT_OR_DASH\n",
+            program, program, program);
+}
+
+static int parse_duration(const char *text, uint64_t *duration)
+{
+    char *end = NULL;
+    unsigned long long value;
+    errno = 0;
+    value = strtoull(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0' || value == 0U ||
+        value >= RUDP_TRANSFER_TIMEOUT_MS) {
+        errno = EINVAL;
+        return -1;
+    }
+    *duration = (uint64_t)value;
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -307,6 +384,7 @@ int main(int argc, char **argv)
     int result;
 
     memset(&cli, 0, sizeof(cli));
+    (void)rudp_benchmark_clock_read(&cli.benchmark_start);
     cli.socket.fd = -1;
     cli.output.fd = -1;
     if (argc == 5 && strcmp(argv[1], "send") == 0) {
@@ -318,8 +396,19 @@ int main(int argc, char **argv)
             rudp_source_release(&cli.source);
             return 1;
         }
+    } else if (argc == 5 && strcmp(argv[1], "stream") == 0) {
+        cli.sending = true;
+        cli.streaming = true;
+        if (parse_port(argv[3], &port) != 0 || resolve_peer(argv[2], port, &cli.peer) != 0 ||
+            parse_duration(argv[4], &cli.stream_duration_ms) != 0 ||
+            rudp_socket_open(&cli.socket, 0U) != RUDP_SOCKET_OK) {
+            print_status(&cli, false, "initialization", strerror(errno));
+            return 1;
+        }
     } else if (argc == 4 && strcmp(argv[1], "receive") == 0) {
-        if (parse_port(argv[2], &port) != 0 || rudp_output_open(&cli.output, argv[3]) != 0 ||
+        cli.streaming = strcmp(argv[3], "-") == 0;
+        if (parse_port(argv[2], &port) != 0 ||
+            (!cli.streaming && rudp_output_open(&cli.output, argv[3]) != 0) ||
             rudp_socket_open(&cli.socket, port) != RUDP_SOCKET_OK) {
             print_status(&cli, false, "initialization", strerror(errno));
             rudp_output_abort(&cli.output);

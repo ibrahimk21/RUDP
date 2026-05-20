@@ -23,7 +23,7 @@ INTEGRATION_TEST_SOURCES := $(wildcard tests/integration/test_*.c)
 INTEGRATION_TEST_BINS := $(patsubst %.c,$(BUILD_DIR)/%,$(INTEGRATION_TEST_SOURCES))
 ALL_OBJECTS := $(CORE_OBJECTS) $(TEST_OBJECTS) $(TEST_SUPPORT_OBJECTS)
 
-.PHONY: all configure lib cli tcp_ref udp_ref build test integration sanitize format format-check lint clean help
+.PHONY: all configure lib cli tcp_ref udp_ref build test integration bench-test sanitize format format-check lint clean help
 
 all: lib cli tcp_ref udp_ref
 
@@ -37,6 +37,7 @@ help:
 	  'make udp_ref     - build the UDP reference stub' \
 	  'make test        - run deterministic unit tests' \
 	  'make integration - run bounded live-socket tests' \
+	  'make bench-test  - validate benchmark harness and metric calculations' \
 	  'make sanitize    - run sanitizer tests' \
 	  'make format      - format C sources' \
 	  'make lint        - run static-analysis checks'
@@ -89,6 +90,9 @@ test: all $(UNIT_TEST_BINS)
 
 integration: all $(INTEGRATION_TEST_BINS)
 	@BUILD_DIR=$(BUILD_DIR) ./tools/run_tests.sh integration
+
+bench-test:
+	@python3 tests/bench/test_harness.py
 
 sanitize:
 	@$(MAKE) BUILD_DIR=$(BUILD_DIR)/sanitize \

@@ -134,12 +134,15 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
             break;
         }
         if (sender->streaming) {
+            const uint64_t offer_now = sender_now(sender);
+            if (sender->stream_interval_ms != 0U && offer_now < sender->stream_next_offer_ms)
+                break;
             if (sender->source_length + RUDP_BENCHMARK_RECORD_SIZE > RUDP_MAX_TRANSFER_LENGTH) {
                 rudp_md5_final(&sender->stream_md5, sender->digest);
                 sender->stream_finished = true;
                 break;
             }
-            rudp_record_make(sender->stream_record, sender->stream_record_id, now * 1000000U);
+            rudp_record_make(sender->stream_record, sender->stream_record_id, offer_now * 1000000U);
             data = sender->stream_record;
             length = RUDP_BENCHMARK_RECORD_SIZE;
         } else {
@@ -171,6 +174,8 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
             rudp_md5_update(&sender->stream_md5, data, length);
             sender->source_length += length;
             sender->stream_record_id += 1U;
+            if (sender->stream_interval_ms != 0U)
+                sender->stream_next_offer_ms = sender_now(sender) + sender->stream_interval_ms;
         }
         sender->offset += length;
         if (sender->data_timer_ms == 0U) {
@@ -193,7 +198,7 @@ enum rudp_transfer_error
 rudp_windowed_sender_start_stream(struct rudp_windowed_sender *sender,
                                   const struct rudp_clock *clock, const struct rudp_session_io *io,
                                   const struct rudp_peer *peer, uint64_t client_nonce,
-                                  uint64_t server_nonce, uint64_t duration_ms,
+                                  uint64_t server_nonce, uint64_t duration_ms, uint64_t interval_ms,
                                   uint32_t maximum_window, uint32_t initial_receive_limit)
 {
     if (sender == NULL || peer == NULL || !callbacks_valid(clock, io) || duration_ms == 0U ||
@@ -214,6 +219,8 @@ rudp_windowed_sender_start_stream(struct rudp_windowed_sender *sender,
     rudp_md5_init(&sender->stream_md5);
     sender->started_ms = sender_now(sender);
     sender->stream_end_ms = sender->started_ms + duration_ms;
+    sender->stream_interval_ms = interval_ms;
+    sender->stream_next_offer_ms = sender->started_ms;
     rudp_pacer_init(&sender->pacer, sender->started_ms);
     sender->progress_deadline_ms = sender->started_ms + RUDP_DATA_PROGRESS_TIMEOUT_MS;
     return sender_fill_window(sender);

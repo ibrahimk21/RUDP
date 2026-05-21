@@ -6,6 +6,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <linux/tcp.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -34,6 +35,9 @@ struct tcp_context {
     int receive_buffer;
     struct tcp_info info;
     struct rudp_benchmark_clock benchmark_start;
+    uint64_t ready_ns;
+    uint64_t first_byte_ns;
+    FILE *records;
 };
 
 static uint64_t monotonic_ns(void)
@@ -106,7 +110,14 @@ static int select_cc(int fd, const char *requested, char actual[64])
 static int tcp_socket(const char *cc, char actual[64])
 {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0 || set_timeout(fd) != 0 || select_cc(fd, cc, actual) != 0) {
+    const char *maximum_segment = getenv("RUDP_TCP_MAXSEG");
+    int requested_mss = 0;
+    if (maximum_segment != NULL)
+        requested_mss = atoi(maximum_segment);
+    if (fd < 0 || set_timeout(fd) != 0 || select_cc(fd, cc, actual) != 0 ||
+        (maximum_segment != NULL &&
+         (requested_mss <= 0 ||
+          setsockopt(fd, IPPROTO_TCP, TCP_MAXSEG, &requested_mss, sizeof(requested_mss)) != 0))) {
         if (fd >= 0)
             (void)close(fd);
         return -1;
@@ -226,7 +237,8 @@ static int send_file(int fd, const char *path, struct tcp_context *context)
     return result;
 }
 
-static int send_stream(int fd, uint64_t duration_ms, struct tcp_context *context)
+static int send_stream(int fd, uint64_t duration_ms, uint64_t interval_ms,
+                       struct tcp_context *context)
 {
     uint8_t header[TCP_REF_HEADER_SIZE] = {'R', 'D', 'T', '2'};
     uint8_t record[RUDP_BENCHMARK_RECORD_SIZE];
@@ -235,6 +247,7 @@ static int send_stream(int fd, uint64_t duration_ms, struct tcp_context *context
     uint8_t digest[16];
     uint64_t id = 0U;
     uint64_t end_ns;
+    uint64_t next_offer_ns = 0U;
 
     put_u64(header + 4U, UINT64_MAX);
     if (rudp_write_all(socket_write, &fd, header, sizeof(header)) != 0)
@@ -242,11 +255,23 @@ static int send_stream(int fd, uint64_t duration_ms, struct tcp_context *context
     end_ns = monotonic_ns() + duration_ms * 1000000U;
     rudp_md5_init(&md5);
     while (monotonic_ns() < end_ns && id < RUDP_MAX_TRANSFER_LENGTH / RUDP_BENCHMARK_RECORD_SIZE) {
-        rudp_record_make(record, id, monotonic_ns());
+        uint64_t offered_ns = monotonic_ns();
+        struct timespec sleep_until;
+
+        if (interval_ms != 0U && next_offer_ns > offered_ns) {
+            sleep_until.tv_sec = (time_t)(next_offer_ns / UINT64_C(1000000000));
+            sleep_until.tv_nsec = (long)(next_offer_ns % UINT64_C(1000000000));
+            while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &sleep_until, NULL) == EINTR)
+                ;
+            offered_ns = monotonic_ns();
+        }
+        rudp_record_make(record, id, offered_ns);
         if (rudp_write_all(socket_write, &fd, record, sizeof(record)) != 0)
             return -1;
         rudp_md5_update(&md5, record, sizeof(record));
         id += 1U;
+        if (interval_ms != 0U)
+            next_offer_ns = monotonic_ns() + interval_ms * UINT64_C(1000000);
     }
     rudp_md5_final(&md5, digest);
     put_u64(final_record, UINT64_MAX);
@@ -285,6 +310,14 @@ static int receive_stream(int fd, struct tcp_context *context)
             errno = EBADMSG;
             return -1;
         }
+        if (context->first_byte_ns == 0U)
+            context->first_byte_ns = monotonic_ns();
+        if (context->records != NULL) {
+            uint64_t offered_ns;
+            (void)rudp_record_validate(record, expected_id, &offered_ns);
+            (void)fprintf(context->records, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", expected_id,
+                          offered_ns, monotonic_ns());
+        }
         rudp_md5_update(&md5, record, sizeof(record));
         expected_id += 1U;
     }
@@ -315,10 +348,32 @@ static int receive_file(int fd, const char *path, struct tcp_context *context)
     }
     if (rudp_output_open(&output, path) != 0)
         return -1;
+    if (remaining != 0U && context->records == NULL) {
+        uint8_t first;
+        if (read_all(fd, &first, 1U) != 0 || rudp_output_append(&output, &first, 1U) != 0)
+            goto done;
+        context->first_byte_ns = monotonic_ns();
+        remaining -= 1U;
+    }
     while (remaining != 0U) {
         size_t amount = remaining > sizeof(buffer) ? sizeof(buffer) : (size_t)remaining;
+        if (context->records != NULL && amount > RUDP_BENCHMARK_RECORD_SIZE)
+            amount = RUDP_BENCHMARK_RECORD_SIZE;
         if (read_all(fd, buffer, amount) != 0 || rudp_output_append(&output, buffer, amount) != 0)
             goto done;
+        if (context->first_byte_ns == 0U)
+            context->first_byte_ns = monotonic_ns();
+        if (context->records != NULL) {
+            uint64_t record_id = (output.length - amount) / RUDP_BENCHMARK_RECORD_SIZE;
+            uint64_t offered_ns;
+            if (amount != RUDP_BENCHMARK_RECORD_SIZE ||
+                !rudp_record_validate(buffer, record_id, &offered_ns)) {
+                errno = EBADMSG;
+                goto done;
+            }
+            (void)fprintf(context->records, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", record_id,
+                          offered_ns, monotonic_ns());
+        }
         remaining -= amount;
     }
     if (rudp_output_finish(&output, output.length, header + 12U) == 0) {
@@ -355,11 +410,14 @@ static void status(const struct tcp_context *context, bool success, const char *
         .cc_actual = context->actual_cc,
         .bytes = context->bytes,
         .tcp_snd_cwnd = context->info.tcpi_snd_cwnd,
+        .tcp_snd_mss = context->info.tcpi_snd_mss,
         .tcp_rtt_us = context->info.tcpi_rtt,
         .tcp_retransmits = context->info.tcpi_retransmits,
         .socket_send_buffer = context->send_buffer,
         .socket_receive_buffer = context->receive_buffer,
         .started_ns = context->benchmark_start.monotonic_ns,
+        .ready_ns = context->ready_ns,
+        .first_byte_ns = context->first_byte_ns,
         .ended_ns = end.monotonic_ns,
         .user_cpu_ns = end.user_cpu_ns - context->benchmark_start.user_cpu_ns,
         .system_cpu_ns = end.system_cpu_ns - context->benchmark_start.system_cpu_ns,
@@ -372,8 +430,9 @@ static void usage(const char *program)
     fprintf(stderr,
             "usage: %s send HOST PORT INPUT {cubic|bbr}\n"
             "       %s stream HOST PORT DURATION_MS {cubic|bbr}\n"
+            "       %s latency HOST PORT DURATION_MS {cubic|bbr}\n"
             "       %s receive PORT OUTPUT {cubic|bbr}\n",
-            program, program, program);
+            program, program, program, program);
 }
 
 static int parse_duration(const char *text, uint64_t *duration_ms)
@@ -398,6 +457,7 @@ int main(int argc, char **argv)
     int result;
     int saved_error;
     uint64_t duration_ms = 0U;
+    uint64_t interval_ms = 0U;
     (void)signal(SIGPIPE, SIG_IGN);
     (void)rudp_benchmark_clock_read(&context.benchmark_start);
     if (argc == 6 && strcmp(argv[1], "send") == 0) {
@@ -405,9 +465,10 @@ int main(int argc, char **argv)
         context.requested_cc = argv[5];
         if (parse_port(argv[3], &port) == 0)
             fd = connect_to(argv[2], port, argv[5], context.actual_cc);
-    } else if (argc == 6 && strcmp(argv[1], "stream") == 0) {
+    } else if (argc == 6 && (strcmp(argv[1], "stream") == 0 || strcmp(argv[1], "latency") == 0)) {
         context.sending = true;
         context.streaming = true;
+        interval_ms = strcmp(argv[1], "latency") == 0 ? 20U : 0U;
         context.requested_cc = argv[5];
         if (parse_port(argv[3], &port) == 0 && parse_duration(argv[4], &duration_ms) == 0)
             fd = connect_to(argv[2], port, argv[5], context.actual_cc);
@@ -423,12 +484,25 @@ int main(int argc, char **argv)
         status(&context, false, "socket", strerror(errno));
         return 1;
     }
-    result = context.sending ? (context.streaming ? send_stream(fd, duration_ms, &context)
-                                                  : send_file(fd, argv[4], &context))
-                             : receive_file(fd, argv[3], &context);
+    context.ready_ns = monotonic_ns();
+    if (!context.sending && getenv("RUDP_RECORDS_CSV") != NULL) {
+        context.records = fopen(getenv("RUDP_RECORDS_CSV"), "w");
+        if (context.records == NULL) {
+            status(&context, false, "records", strerror(errno));
+            (void)close(fd);
+            return 1;
+        }
+        (void)fputs("record_id,offer_ns,delivered_ns\n", context.records);
+    }
+    result = context.sending
+                 ? (context.streaming ? send_stream(fd, duration_ms, interval_ms, &context)
+                                      : send_file(fd, argv[4], &context))
+                 : receive_file(fd, argv[3], &context);
     saved_error = errno;
     collect_socket_info(fd, &context);
     (void)close(fd);
+    if (context.records != NULL)
+        (void)fclose(context.records);
     status(&context, result == 0, result == 0 ? "complete" : "transfer",
            result == 0 ? "none" : strerror(saved_error));
     return result == 0 ? 0 : 1;

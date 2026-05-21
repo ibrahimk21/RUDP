@@ -17,6 +17,7 @@ enum rudp_socket_error {
 
 struct rudp_socket {
     int fd;
+    uint8_t receive_buffer[RUDP_MAX_DATAGRAM_SIZE];
 };
 
 enum rudp_socket_error rudp_socket_open(struct rudp_socket *socket, uint16_t port);

@@ -68,16 +68,18 @@ int rudp_benchmark_record_write(FILE *stream, const struct rudp_benchmark_record
                 ",\"bytes\":%" PRIu64 ",\"packets_sent\":%" PRIu64 ",\"packets_received\":%" PRIu64
                 ",\"malformed_packets\":%" PRIu64 ",\"unique_bytes\":%" PRIu64
                 ",\"duplicate_records\":%" PRIu64 ",\"missing_records\":%" PRIu64
-                ",\"started_ns\":%" PRIu64 ",\"ended_ns\":%" PRIu64 ",\"user_cpu_ns\":%" PRIu64
-                ",\"system_cpu_ns\":%" PRIu64 ",\"fast_retransmits\":%u,\"timeout_retransmits\":%u"
+                ",\"started_ns\":%" PRIu64 ",\"ready_ns\":%" PRIu64 ",\"first_byte_ns\":%" PRIu64
+                ",\"ended_ns\":%" PRIu64 ",\"user_cpu_ns\":%" PRIu64 ",\"system_cpu_ns\":%" PRIu64
+                ",\"fast_retransmits\":%u,\"timeout_retransmits\":%u"
                 ",\"clean_rtt_samples\":%u,\"suppressed_rtt_samples\":%u"
-                ",\"tcp_snd_cwnd\":%u,\"tcp_rtt_us\":%u,\"tcp_retransmits\":%u"
+                ",\"tcp_snd_cwnd\":%u,\"tcp_snd_mss\":%u,\"tcp_rtt_us\":%u,\"tcp_retransmits\":%u"
                 ",\"socket_send_buffer\":%d,\"socket_receive_buffer\":%d}\n",
                 record->bytes, record->packets_sent, record->packets_received,
                 record->malformed_packets, record->unique_bytes, record->duplicate_records,
-                record->missing_records, record->started_ns, record->ended_ns, record->user_cpu_ns,
-                record->system_cpu_ns, record->fast_retransmits, record->timeout_retransmits,
-                record->clean_rtt_samples, record->suppressed_rtt_samples, record->tcp_snd_cwnd,
+                record->missing_records, record->started_ns, record->ready_ns,
+                record->first_byte_ns, record->ended_ns, record->user_cpu_ns, record->system_cpu_ns,
+                record->fast_retransmits, record->timeout_retransmits, record->clean_rtt_samples,
+                record->suppressed_rtt_samples, record->tcp_snd_cwnd, record->tcp_snd_mss,
                 record->tcp_rtt_us, record->tcp_retransmits, record->socket_send_buffer,
                 record->socket_receive_buffer) < 0)
         return -1;

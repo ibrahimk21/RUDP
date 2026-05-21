@@ -140,7 +140,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 ## Phase 8 — Validated benchmark harness
 
 - [x] Implement the exact BENCHMARKING.md configuration, disposable topology, validation, randomized schedule, timeouts, manifests/raw/sample schemas, CPU/counter capture and plotting with confidence intervals.
-- [ ] Implement latency/setup, controlled loss, and simultaneous-flow fairness workloads, including congestion-only and capacity-step cases. Validate metric calculations with small known traces; failed runs remain visible.
+- [x] Implement latency/setup, controlled loss, and simultaneous-flow fairness workloads, including congestion-only and capacity-step cases. Validate metric calculations with small known traces; failed runs remain visible.
 - [ ] Check baseline throughput/delay/loss/burst distributions, TCP segmentation and offloads, queue occupancy/drops, and cleanup on failure before collecting results.
 
 **Checkpoint:** all dependencies and profile integration tests pass; each workload yields auditable artifacts and correct graphs, including an intentionally failed run. Smoke runs do not count as experimental repetitions.

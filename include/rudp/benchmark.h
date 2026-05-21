@@ -20,6 +20,8 @@ struct rudp_benchmark_record {
     uint64_t duplicate_records;
     uint64_t missing_records;
     uint64_t started_ns;
+    uint64_t ready_ns;
+    uint64_t first_byte_ns;
     uint64_t ended_ns;
     uint64_t user_cpu_ns;
     uint64_t system_cpu_ns;
@@ -28,6 +30,7 @@ struct rudp_benchmark_record {
     uint32_t clean_rtt_samples;
     uint32_t suppressed_rtt_samples;
     uint32_t tcp_snd_cwnd;
+    uint32_t tcp_snd_mss;
     uint32_t tcp_rtt_us;
     uint32_t tcp_retransmits;
     int socket_send_buffer;

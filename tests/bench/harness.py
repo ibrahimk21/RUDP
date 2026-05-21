@@ -24,11 +24,12 @@ RUN_FIELDS = ["schema_version", "run_id", "manifest_id", "schedule_id", "session
 RECORD_FIELDS = ["run_id", "flow_id", "record_id", "offer_ns", "accepted_ns", "delivered_ns", "bytes", "valid", "duplicate"]
 EVENT_FIELDS = ["run_id", "timestamp_ns", "kind", "direction", "packet_id", "record_id", "bytes", "detail"]
 QUEUE_FIELDS = ["run_id", "timestamp_ns", "namespace", "interface", "backlog_bytes", "backlog_packets", "drops", "overlimits", "requeues"]
+FAIRNESS_FIELDS = ["run_id", "flow_1_id", "flow_1_variant", "flow_2_id", "flow_2_variant", "window_start_s", "window_end_s", "flow_1_goodput_bps", "flow_2_goodput_bps", "jain_index", "utilization_bps"]
 
 
 def load_config(path: Path) -> dict[str, Any]:
     config = json.loads(path.read_text(encoding="utf-8"))
-    required = {"schema_version", "final_seed", "pilot_seed", "topology", "profiles", "variants", "workloads", "sampling", "calibration", "raw_udp"}
+    required = {"schema_version", "final_seed", "pilot_seed", "topology", "profiles", "variants", "coexistence_pairs", "workloads", "sampling", "calibration", "raw_udp"}
     if set(config) != required or config["schema_version"] != SCHEMA_VERSION:
         raise ValueError("unsupported or incomplete benchmark configuration")
     if config["sampling"]["retained_blocks"] != 10 or config["sampling"]["warmups"] != 1:
@@ -61,10 +62,14 @@ def generate_schedule(config: dict[str, Any], pilot: bool = False) -> list[dict[
             forward_seed = rng.randrange(1, 2**31)
             reverse_seed = rng.randrange(1, 2**31)
             sensitivity = bool(config["profiles"][profile].get("sensitivity"))
-            workloads = ["sustained"] if sensitivity else list(config["workloads"])
+            only = config["profiles"][profile].get("workload_only")
+            workloads = [only] if only else (["sustained"] if sensitivity else [name for name in config["workloads"] if name != "fairness_step"])
             for workload in workloads:
-                for variant in variant_order:
+                choices = config["coexistence_pairs"] if workload.startswith("fairness") else variant_order
+                for variant in choices:
                     if variant == "raw-udp" and workload != "sustained":
+                        continue
+                    if workload.startswith("fairness") and profile not in ("terrestrial", "geo", "leo", "geo_congestion", "geo_capacity_step"):
                         continue
                     order += 1
                     rows.append({
@@ -103,6 +108,40 @@ def latency_metrics(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
 def jain_index(first: float, second: float) -> float | None:
     denominator = 2.0 * (first * first + second * second)
     return None if denominator == 0 else (first + second) ** 2 / denominator
+
+
+def window_goodput(records: Iterable[dict[str, Any]], start_ns: int, end_ns: int) -> float:
+    if end_ns <= start_ns:
+        raise ValueError("invalid measurement window")
+    delivered = sum(int(row["bytes"]) for row in records if row.get("delivered_ns") not in (None, "") and start_ns <= int(row["delivered_ns"]) < end_ns and str(row.get("duplicate", "0")) in ("0", "False", "false", ""))
+    return delivered * 8e9 / (end_ns - start_ns)
+
+
+def setup_metrics(started_ns: int, ready_ns: int, first_byte_ns: int | None) -> dict[str, float | None]:
+    if ready_ns < started_ns or (first_byte_ns is not None and first_byte_ns < started_ns):
+        raise ValueError("non-monotonic setup trace")
+    return {"setup_ms": (ready_ns - started_ns) / 1e6, "first_byte_ms": None if first_byte_ns is None else (first_byte_ns - started_ns) / 1e6}
+
+
+def recovery_metrics(events: Iterable[dict[str, Any]], records: Iterable[dict[str, Any]], target: int) -> dict[str, Any]:
+    drops = [row for row in events if row.get("kind") == "controlled_drop" and int(row.get("record_id", -1)) == target]
+    delivered = [row for row in records if int(row["record_id"]) == target and row.get("delivered_ns") not in (None, "")]
+    later = [row for row in records if int(row["record_id"]) > target and row.get("delivered_ns") not in (None, "")]
+    if len(drops) != 1:
+        raise ValueError("controlled recovery requires exactly one proved drop")
+    injected = int(drops[0]["timestamp_ns"])
+    return {"drop_count": 1, "recovery_ms": None if not delivered else (int(delivered[0]["delivered_ns"]) - injected) / 1e6, "later_data": bool(later), "censored": not bool(delivered)}
+
+
+def fairness_metrics(flow_rows: dict[str, list[dict[str, Any]]], windows: Iterable[tuple[int, int]], t0_ns: int) -> list[dict[str, Any]]:
+    if set(flow_rows) != {"flow-1", "flow-2"}:
+        raise ValueError("fairness needs exactly two named flows")
+    output = []
+    for start_s, end_s in windows:
+        first = window_goodput(flow_rows["flow-1"], t0_ns + start_s * 10**9, t0_ns + end_s * 10**9)
+        second = window_goodput(flow_rows["flow-2"], t0_ns + start_s * 10**9, t0_ns + end_s * 10**9)
+        output.append({"window_start_s": start_s, "window_end_s": end_s, "flow_1_goodput_bps": first, "flow_2_goodput_bps": second, "jain_index": jain_index(first, second), "utilization_bps": first + second})
+    return output
 
 
 def bootstrap_ratio(blocks: list[tuple[float, float]], resamples: int, seed: int) -> tuple[float | None, float | None, float | None]:
@@ -145,7 +184,7 @@ def create_artifacts(root: Path, experiment_id: str, config_path: Path, pilot: b
     }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_csv(output / "schedule.csv", SCHEDULE_FIELDS, generate_schedule(config, pilot))
-    for name, fields in (("runs.csv", RUN_FIELDS), ("records.csv", RECORD_FIELDS), ("events.csv", EVENT_FIELDS), ("queue.csv", QUEUE_FIELDS)):
+    for name, fields in (("runs.csv", RUN_FIELDS), ("records.csv", RECORD_FIELDS), ("events.csv", EVENT_FIELDS), ("queue.csv", QUEUE_FIELDS), ("fairness.csv", FAIRNESS_FIELDS)):
         write_csv(output / name, fields)
     (output / "counters").mkdir()
     (output / "logs").mkdir()

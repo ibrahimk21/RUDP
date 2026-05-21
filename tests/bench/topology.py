@@ -16,7 +16,8 @@ from harness import load_config, snapshot_counters
 
 
 class Topology:
-    def __init__(self, root: Path, profile_name: str, forward_seed: int, reverse_seed: int):
+    def __init__(self, root: Path, profile_name: str, forward_seed: int, reverse_seed: int,
+                 no_loss: bool = False):
         self.root = root
         self.config = load_config(root / "tests" / "bench" / "config.json")
         self.profile = self.config["profiles"][profile_name]
@@ -24,6 +25,7 @@ class Topology:
         self.names = {role: f"{self.prefix}{suffix}" for role, suffix in (("sender", "s"), ("shaper", "h"), ("delay", "d"), ("receiver", "r"))}
         self.forward_seed = forward_seed
         self.reverse_seed = reverse_seed
+        self.no_loss = no_loss
         self.manifest = root / "results" / "_work" / f"{self.prefix}.topology.json"
         self.created: list[str] = []
 
@@ -75,7 +77,7 @@ class Topology:
         command = ["tc", "qdisc", "add", "dev", interface, "root", "netem", "limit", str(topology["netem_limit_packets"]), "delay", f"{profile['delay_ms']}ms"]
         if "jitter_ms" in profile:
             command += [f"{profile['jitter_ms']}ms", "distribution", "uniform"]
-        loss = profile["loss"]
+        loss = {"kind": "none"} if self.no_loss else profile["loss"]
         if loss["kind"] == "random":
             command += ["loss", "random", f"{loss['percent']}%", "seed", str(seed)]
         elif loss["kind"] == "gemodel":
@@ -90,9 +92,14 @@ class Topology:
 
 
 def check_dependencies() -> int:
-    missing = [name for name in ("ip", "tc", "ethtool", "ping", "sysctl", "tcpdump", "setpriv") if shutil.which(name) is None]
+    missing = [name for name in ("ip", "tc", "ethtool", "ping", "sysctl", "tcpdump", "setpriv", "clang", "bpftool") if shutil.which(name) is None]
+    if not Path("/usr/include/bpf/bpf_helpers.h").exists():
+        missing.append("libbpf headers")
     if missing:
         print("missing benchmark dependencies: " + ", ".join(missing), file=sys.stderr); return 1
+    netem_help = subprocess.run(["tc", "qdisc", "add", "dev", "lo", "root", "netem", "help"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False).stdout
+    if "seed VALUE" not in netem_help:
+        print("installed netem lacks reproducible seed support", file=sys.stderr); return 1
     algorithms = Path("/proc/sys/net/ipv4/tcp_available_congestion_control").read_text().split()
     if not {"cubic", "bbr"}.issubset(algorithms):
         print("CUBIC and BBR must both be available", file=sys.stderr); return 1
@@ -107,6 +114,7 @@ def main() -> int:
     parser.add_argument("--forward-seed", type=int, default=1)
     parser.add_argument("--reverse-seed", type=int, default=2)
     parser.add_argument("--snapshot", type=Path)
+    parser.add_argument("--no-loss", action="store_true", help="controlled-loss derivative: disable background loss")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.check:
@@ -114,7 +122,7 @@ def main() -> int:
     if os.geteuid() != 0 or not args.command:
         parser.error("topology creation requires root and a command after --")
     root = Path(__file__).resolve().parents[2]
-    topology = Topology(root, args.profile, args.forward_seed, args.reverse_seed)
+    topology = Topology(root, args.profile, args.forward_seed, args.reverse_seed, args.no_loss)
     atexit.register(topology.cleanup)
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, lambda signum, frame: sys.exit(128 + signum))
@@ -124,6 +132,8 @@ def main() -> int:
     environment = os.environ.copy(); environment.update({f"RUDP_{key.upper()}_NS": value for key, value in topology.names.items()})
     environment["RUDP_RUN_AS_UID"] = os.environ.get("SUDO_UID", "65534")
     environment["RUDP_RUN_AS_GID"] = os.environ.get("SUDO_GID", "65534")
+    environment["RUDP_BACKGROUND_LOSS"] = "0" if args.no_loss else "1"
+    environment["RUDP_SOCKET_BUFFER"] = str(topology.config["topology"]["socket_buffer_bytes"])
     command = args.command[1:] if args.command and args.command[0] == "--" else args.command
     return subprocess.run(command, env=environment, check=False).returncode
 

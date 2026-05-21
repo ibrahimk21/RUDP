@@ -515,7 +515,7 @@ static void test_timed_stream_generator_and_final_digest(void)
     assert(rudp_windowed_receiver_start(pair->receiver, &clock, &receiver_io, &peer, 11U, 22U,
                                         &metadata, &sink_api) == RUDP_TRANSFER_OK);
     assert(rudp_windowed_sender_start_stream(pair->sender, &clock, &sender_io, &peer, 11U, 22U,
-                                             100U, RUDP_WINDOW_CAPACITY,
+                                             100U, 20U, RUDP_WINDOW_CAPACITY,
                                              RUDP_WINDOW_CAPACITY) == RUDP_TRANSFER_OK);
     transfer_pair_run(pair, 5000U);
     assert(pair->sender->state == RUDP_TRANSFER_COMPLETE);

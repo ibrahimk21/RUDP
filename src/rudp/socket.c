@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -35,6 +36,22 @@ enum rudp_socket_error rudp_socket_open(struct rudp_socket *endpoint, uint16_t p
     endpoint->fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (endpoint->fd < 0) {
         return RUDP_SOCKET_ERR_SYSTEM;
+    }
+    {
+        const char *requested_text = getenv("RUDP_SOCKET_BUFFER");
+        if (requested_text != NULL) {
+            char *end = NULL;
+            long requested = strtol(requested_text, &end, 10);
+            int requested_buffer = (int)requested;
+            if (end == requested_text || *end != '\0' || requested <= 0 || requested > INT32_MAX ||
+                setsockopt(endpoint->fd, SOL_SOCKET, SO_SNDBUF, &requested_buffer,
+                           sizeof(requested_buffer)) != 0 ||
+                setsockopt(endpoint->fd, SOL_SOCKET, SO_RCVBUF, &requested_buffer,
+                           sizeof(requested_buffer)) != 0) {
+                rudp_socket_close(endpoint);
+                return RUDP_SOCKET_ERR_SYSTEM;
+            }
+        }
     }
     flags = fcntl(endpoint->fd, F_GETFL);
     if (flags < 0 || fcntl(endpoint->fd, F_SETFL, flags | O_NONBLOCK) < 0) {
@@ -101,7 +118,6 @@ enum rudp_socket_error rudp_socket_receive_packet(struct rudp_socket *socket,
     struct sockaddr_in address;
     struct iovec iov;
     struct msghdr message;
-    uint8_t bytes[RUDP_MAX_DATAGRAM_SIZE];
     ssize_t received;
 
     if (socket == NULL || peer == NULL || packet == NULL || socket->fd < 0) {
@@ -109,8 +125,8 @@ enum rudp_socket_error rudp_socket_receive_packet(struct rudp_socket *socket,
     }
     memset(&address, 0, sizeof(address));
     memset(&message, 0, sizeof(message));
-    iov.iov_base = bytes;
-    iov.iov_len = sizeof(bytes);
+    iov.iov_base = socket->receive_buffer;
+    iov.iov_len = sizeof(socket->receive_buffer);
     message.msg_name = &address;
     message.msg_namelen = sizeof(address);
     message.msg_iov = &iov;
@@ -126,7 +142,7 @@ enum rudp_socket_error rudp_socket_receive_packet(struct rudp_socket *socket,
         address.sin_family != AF_INET) {
         return RUDP_SOCKET_ERR_TRUNCATED;
     }
-    if (rudp_packet_decode(packet, bytes, (size_t)received) != RUDP_PACKET_OK) {
+    if (rudp_packet_decode(packet, socket->receive_buffer, (size_t)received) != RUDP_PACKET_OK) {
         return RUDP_SOCKET_ERR_PACKET;
     }
     address_to_peer(&address, peer);

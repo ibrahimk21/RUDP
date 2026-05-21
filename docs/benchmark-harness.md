@@ -33,6 +33,20 @@ sudo python3 tests/bench/topology.py --profile geo \
   --forward-seed 123 --reverse-seed 456 -- ./run-one-block.sh
 ```
 
+Controlled interior/tail recovery runs add `--no-loss`; the workload runner
+refuses to arm its one-shot tc/eBPF classifier while profile background loss is
+active. The classifier learns the TCP initial sequence number (or reads the
+RUDP DATA sequence), drops only the packet covering record 4096, and records
+the injection timestamp, packet span, and exact drop count. Retransmissions
+bypass the already-triggered classifier.
+
+Run a scheduled single-flow row with `workloads.py run-pair`, or a coexistence
+row with `workloads.py run-fairness`. The latter releases both senders through
+an explicit barrier, reverses protocol launch roles in alternating blocks,
+samples both shared qdiscs once per second, and applies the 20-to-5-Mbit/s step
+at 60 seconds with a 31,250-byte (50 ms) FIFO. Both commands append every
+attempt—including timeouts and transport failures—to the versioned CSVs.
+
 The topology command exports `RUDP_SENDER_NS`, `RUDP_SHAPER_NS`,
 `RUDP_DELAY_NS`, and `RUDP_RECEIVER_NS`. Endpoint commands must be launched via
 `tests/bench/run_in_namespace.sh "$RUDP_SENDER_NS" ...`; it drops to the

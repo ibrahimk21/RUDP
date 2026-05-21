@@ -29,6 +29,7 @@ struct cli_context {
     bool streaming;
     bool transfer_started;
     uint64_t stream_duration_ms;
+    uint64_t stream_interval_ms;
     uint64_t stream_records;
     uint64_t stream_bytes;
     struct rudp_md5 stream_md5;
@@ -36,7 +37,32 @@ struct cli_context {
     uint64_t packets_received;
     uint64_t malformed_packets;
     struct rudp_benchmark_clock benchmark_start;
+    uint64_t ready_ns;
+    uint64_t first_byte_ns;
+    FILE *records;
+    int socket_send_buffer;
+    int socket_receive_buffer;
 };
+
+static void collect_socket_buffers(struct cli_context *cli)
+{
+    socklen_t length = sizeof(int);
+    (void)getsockopt(cli->socket.fd, SOL_SOCKET, SO_SNDBUF, &cli->socket_send_buffer, &length);
+    length = sizeof(int);
+    (void)getsockopt(cli->socket.fd, SOL_SOCKET, SO_RCVBUF, &cli->socket_receive_buffer, &length);
+}
+
+static void log_delivery(struct cli_context *cli, const uint8_t *bytes, uint64_t record_id)
+{
+    uint64_t offered;
+    struct rudp_benchmark_clock delivered;
+
+    if (cli->records == NULL || !rudp_record_validate(bytes, record_id, &offered) ||
+        rudp_benchmark_clock_read(&delivered) != 0)
+        return;
+    (void)fprintf(cli->records, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", record_id, offered,
+                  delivered.monotonic_ns);
+}
 
 static int stream_append(void *context, const uint8_t *bytes, size_t length)
 {
@@ -46,10 +72,42 @@ static int stream_append(void *context, const uint8_t *bytes, size_t length)
         errno = EBADMSG;
         return -1;
     }
+    if (cli->first_byte_ns == 0U) {
+        struct rudp_benchmark_clock first;
+        if (rudp_benchmark_clock_read(&first) == 0)
+            cli->first_byte_ns = first.monotonic_ns;
+    }
+    log_delivery(cli, bytes, cli->stream_records);
     rudp_md5_update(&cli->stream_md5, bytes, length);
     cli->stream_records += 1U;
     cli->stream_bytes += length;
     return 0;
+}
+
+static int file_append(void *context, const uint8_t *bytes, size_t length)
+{
+    struct cli_context *cli = context;
+
+    if (length != 0U && cli->first_byte_ns == 0U) {
+        struct rudp_benchmark_clock first;
+        if (rudp_benchmark_clock_read(&first) == 0)
+            cli->first_byte_ns = first.monotonic_ns;
+    }
+    if (cli->records != NULL) {
+        if (length != RUDP_BENCHMARK_RECORD_SIZE ||
+            cli->output.length % RUDP_BENCHMARK_RECORD_SIZE != 0U) {
+            errno = EBADMSG;
+            return -1;
+        }
+        log_delivery(cli, bytes, cli->output.length / RUDP_BENCHMARK_RECORD_SIZE);
+    }
+    return rudp_output_append(&cli->output, bytes, length);
+}
+
+static int file_finish(void *context, uint64_t length, const uint8_t digest[16])
+{
+    struct cli_context *cli = context;
+    return rudp_output_finish(&cli->output, length, digest);
 }
 
 static int stream_finish(void *context, uint64_t length, const uint8_t digest[16])
@@ -190,9 +248,13 @@ static void print_status(const struct cli_context *cli, bool success, const char
         .clean_rtt_samples = cli->sender == NULL ? 0U : cli->sender->clean_rtt_samples,
         .suppressed_rtt_samples = cli->sender == NULL ? 0U : cli->sender->suppressed_rtt_samples,
         .started_ns = cli->benchmark_start.monotonic_ns,
+        .ready_ns = cli->ready_ns,
+        .first_byte_ns = cli->first_byte_ns,
         .ended_ns = end.monotonic_ns,
         .user_cpu_ns = end.user_cpu_ns - cli->benchmark_start.user_cpu_ns,
         .system_cpu_ns = end.system_cpu_ns - cli->benchmark_start.system_cpu_ns,
+        .socket_send_buffer = cli->socket_send_buffer,
+        .socket_receive_buffer = cli->socket_receive_buffer,
     };
 
     (void)rudp_benchmark_record_write(stdout, &record);
@@ -211,8 +273,8 @@ static int start_transfer(struct cli_context *cli, const struct rudp_clock *cloc
         if (cli->streaming) {
             if (rudp_windowed_sender_start_stream(
                     cli->sender, clock, io, &cli->session.peer, cli->session.client_nonce,
-                    cli->session.server_nonce, cli->stream_duration_ms, RUDP_WINDOW_CAPACITY,
-                    RUDP_INITIAL_RECEIVE_LIMIT) != RUDP_TRANSFER_OK)
+                    cli->session.server_nonce, cli->stream_duration_ms, cli->stream_interval_ms,
+                    RUDP_WINDOW_CAPACITY, RUDP_INITIAL_RECEIVE_LIMIT) != RUDP_TRANSFER_OK)
                 return -1;
         } else if (rudp_windowed_sender_start(cli->sender, clock, io, &cli->session.peer,
                                               cli->session.client_nonce, cli->session.server_nonce,
@@ -232,8 +294,7 @@ static int start_transfer(struct cli_context *cli, const struct rudp_clock *cloc
             sink = (struct rudp_transfer_sink){cli, stream_append, stream_finish};
             rudp_md5_init(&cli->stream_md5);
         } else {
-            sink =
-                (struct rudp_transfer_sink){&cli->output, rudp_output_append, rudp_output_finish};
+            sink = (struct rudp_transfer_sink){cli, file_append, file_finish};
         }
 
         cli->receiver = calloc(1U, sizeof(*cli->receiver));
@@ -245,6 +306,11 @@ static int start_transfer(struct cli_context *cli, const struct rudp_clock *cloc
         }
     }
     cli->transfer_started = true;
+    if (cli->ready_ns == 0U) {
+        struct rudp_benchmark_clock ready;
+        if (rudp_benchmark_clock_read(&ready) == 0)
+            cli->ready_ns = ready.monotonic_ns;
+    }
     return 0;
 }
 
@@ -358,8 +424,9 @@ static void usage(const char *program)
     fprintf(stderr,
             "usage: %s send HOST PORT INPUT\n"
             "       %s stream HOST PORT DURATION_MS\n"
+            "       %s latency HOST PORT DURATION_MS\n"
             "       %s receive PORT OUTPUT_OR_DASH\n",
-            program, program, program);
+            program, program, program, program);
 }
 
 static int parse_duration(const char *text, uint64_t *duration)
@@ -396,9 +463,10 @@ int main(int argc, char **argv)
             rudp_source_release(&cli.source);
             return 1;
         }
-    } else if (argc == 5 && strcmp(argv[1], "stream") == 0) {
+    } else if (argc == 5 && (strcmp(argv[1], "stream") == 0 || strcmp(argv[1], "latency") == 0)) {
         cli.sending = true;
         cli.streaming = true;
+        cli.stream_interval_ms = strcmp(argv[1], "latency") == 0 ? 20U : 0U;
         if (parse_port(argv[3], &port) != 0 || resolve_peer(argv[2], port, &cli.peer) != 0 ||
             parse_duration(argv[4], &cli.stream_duration_ms) != 0 ||
             rudp_socket_open(&cli.socket, 0U) != RUDP_SOCKET_OK) {
@@ -407,7 +475,13 @@ int main(int argc, char **argv)
         }
     } else if (argc == 4 && strcmp(argv[1], "receive") == 0) {
         cli.streaming = strcmp(argv[3], "-") == 0;
+        if (getenv("RUDP_RECORDS_CSV") != NULL) {
+            cli.records = fopen(getenv("RUDP_RECORDS_CSV"), "w");
+            if (cli.records != NULL)
+                (void)fputs("record_id,offer_ns,delivered_ns\n", cli.records);
+        }
         if (parse_port(argv[2], &port) != 0 ||
+            (getenv("RUDP_RECORDS_CSV") != NULL && cli.records == NULL) ||
             (!cli.streaming && rudp_output_open(&cli.output, argv[3]) != 0) ||
             rudp_socket_open(&cli.socket, port) != RUDP_SOCKET_OK) {
             print_status(&cli, false, "initialization", strerror(errno));
@@ -418,6 +492,7 @@ int main(int argc, char **argv)
         usage(argv[0]);
         return 2;
     }
+    collect_socket_buffers(&cli);
     result = run(&cli);
     if (result == 0) {
         print_status(&cli, true, "complete", "none");
@@ -433,5 +508,7 @@ int main(int argc, char **argv)
     rudp_output_abort(&cli.output);
     free(cli.sender);
     free(cli.receiver);
+    if (cli.records != NULL)
+        (void)fclose(cli.records);
     return result == 0 ? 0 : 1;
 }

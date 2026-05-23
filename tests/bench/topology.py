@@ -28,6 +28,7 @@ class Topology:
         self.no_loss = no_loss
         self.manifest = root / "results" / "_work" / f"{self.prefix}.topology.json"
         self.created: list[str] = []
+        self.socket_sysctls: dict[str, str] = {}
 
     def run(self, *command: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         return subprocess.run(command, text=True, check=check)
@@ -37,7 +38,14 @@ class Topology:
 
     def create(self) -> None:
         self.manifest.parent.mkdir(parents=True, exist_ok=True)
-        self.manifest.write_text(json.dumps({"pid": os.getpid(), "namespaces": self.names}, indent=2) + "\n")
+        for name in ("net.core.rmem_max", "net.core.wmem_max"):
+            self.socket_sysctls[name] = subprocess.run(
+                ["sysctl", "-n", name], text=True, stdout=subprocess.PIPE, check=True
+            ).stdout.strip()
+            self.run("sysctl", "-q", "-w", f"{name}={self.config['topology']['socket_buffer_bytes']}")
+        self.manifest.write_text(json.dumps({"pid": os.getpid(), "namespaces": self.names,
+                                             "socket_sysctls_before": self.socket_sysctls,
+                                             "socket_sysctls_requested": self.config["topology"]["socket_buffer_bytes"]}, indent=2) + "\n")
         for role in ("sender", "shaper", "delay", "receiver"):
             self.run("ip", "netns", "add", self.names[role]); self.created.append(self.names[role]); self.netns(role, "ip", "link", "set", "lo", "up")
         links = (("sender", "s0", "shaper", "h0"), ("shaper", "h1", "delay", "d0"), ("delay", "d1", "receiver", "r0"))
@@ -55,9 +63,6 @@ class Topology:
         self.netns("delay", "ip", "route", "add", "192.0.2.0/30", "via", "198.51.100.1")
         for role in ("shaper", "delay"):
             self.netns(role, "sysctl", "-q", "-w", "net.ipv4.ip_forward=1")
-        for role in ("sender", "receiver"):
-            self.netns(role, "sysctl", "-q", "-w", f"net.core.rmem_max={self.config['topology']['socket_buffer_bytes']}")
-            self.netns(role, "sysctl", "-q", "-w", f"net.core.wmem_max={self.config['topology']['socket_buffer_bytes']}")
         self._configure_rate("shaper", "h1", self.config["topology"]["rate_bps"])
         self._configure_rate("delay", "d0", self.config["topology"]["rate_bps"])
         self._configure_netem("delay", "d1", self.forward_seed)
@@ -88,6 +93,9 @@ class Topology:
         for namespace in reversed(self.created):
             subprocess.run(["ip", "netns", "del", namespace], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         self.created.clear()
+        for name, value in self.socket_sysctls.items():
+            subprocess.run(["sysctl", "-q", "-w", f"{name}={value}"], check=False)
+        self.socket_sysctls.clear()
         self.manifest.unlink(missing_ok=True)
 
 

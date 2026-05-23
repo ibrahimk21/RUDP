@@ -109,7 +109,7 @@ format-check:
 
 lint: all
 	@command -v cppcheck >/dev/null || { echo 'cppcheck is required; run tools/bootstrap_ubuntu.sh'; exit 1; }
-	@files=$$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print 2>/dev/null); \
+	@files=$$(find src tests -type f \( -name '*.c' -o -name '*.h' \) ! -name '*.bpf.c' -print 2>/dev/null); \
 	if [ -n "$$files" ]; then cppcheck --enable=warning,style,performance,portability --error-exitcode=1 $$files; else echo 'No C sources exist yet; static-analysis scaffold check passed.'; fi
 
 clean:

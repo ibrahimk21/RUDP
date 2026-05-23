@@ -26,7 +26,8 @@
     "leo_jitter": {"delay_ms": 20, "jitter_ms": 5, "loss": {"kind": "gemodel", "p": 1.0, "r": 20.0, "h": 100.0, "k": 0.0}, "sensitivity": true},
     "geo_mss_1024": {"delay_ms": 300, "loss": {"kind": "random", "percent": 2.0}, "tcp_maxseg": 1024, "sensitivity": true},
     "geo_congestion": {"delay_ms": 300, "loss": {"kind": "none"}, "workload_only": "fairness"},
-    "geo_capacity_step": {"delay_ms": 300, "loss": {"kind": "none"}, "workload_only": "fairness_step"}
+    "geo_capacity_step": {"delay_ms": 300, "loss": {"kind": "none"}, "workload_only": "fairness_step"},
+    "calibration_baseline": {"delay_ms": 0, "loss": {"kind": "none"}, "schedule": false}
   },
   "variants": ["rudp-aimd", "tcp-cubic", "tcp-bbr", "raw-udp"],
   "coexistence_pairs": ["rudp-aimd+tcp-cubic", "rudp-aimd+tcp-bbr", "tcp-cubic+tcp-cubic", "tcp-bbr+tcp-bbr"],

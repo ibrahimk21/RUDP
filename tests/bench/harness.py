@@ -59,6 +59,8 @@ def generate_schedule(config: dict[str, Any], pilot: bool = False) -> list[dict[
             rng.shuffle(variant_order)
         order = 0
         for profile in profile_order:
+            if config["profiles"][profile].get("schedule") is False:
+                continue
             forward_seed = rng.randrange(1, 2**31)
             reverse_seed = rng.randrange(1, 2**31)
             sensitivity = bool(config["profiles"][profile].get("sensitivity"))

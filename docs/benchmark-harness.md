@@ -59,3 +59,36 @@ The local WSL instance lacks the Phase 8 BBR/netem-seed/CAP_NET_ADMIN gate, so
 configuration, schedules, metrics, schemas, failure preservation, and plots can
 be tested locally, while topology calibration and measurements must run on the
 compatible host described in `docs/environment.md`.
+
+## Mandatory pre-collection gate
+
+On that host, collect a no-impairment baseline and every primary profile. Use
+ten separately seeded topology invocations for LEO and one for the other
+profiles; each invocation writes both directional 100-probe RTT and 10,000
+packet one-way sequence results:
+
+```sh
+sudo tests/bench/topology.py --profile calibration_baseline -- \
+  tests/bench/collect_validation.py validation/calibration_baseline/1 \
+  --profile calibration_baseline --seed 1
+sudo tests/bench/topology.py --profile terrestrial --forward-seed 11 \
+  --reverse-seed 12 -- tests/bench/collect_validation.py \
+  validation/terrestrial/1 --profile terrestrial --seed 1
+```
+
+Run `collect_saturation.py` inside a terrestrial topology, retain TCP CUBIC,
+BBR, and matched-MSS smoke JSON/captures under `validation/`, convert all
+before/during/after counter snapshots with `summarize_counters.py`, and run:
+
+```sh
+sudo tests/bench/cleanup_check.py validation/cleanup.json
+tests/bench/failure_check.py validation/intentional-failure.json
+tests/bench/preflight_gate.py validation validation/report.json
+```
+
+The final command is deliberately strict and sets `collection_permitted` only
+when RTT, independent loss, ten-seed LEO loss/run length, saturation rate,
+packet sizes, TCP segmentation/MSS, CUBIC/BBR readback, every interface's
+TSO/GSO/GRO state, propagation occupancy, endpoint/bottleneck drops, exact
+failure cleanup, and a retained intentional timeout all pass. A failed gate is
+an investigation result; it is never adjusted or silently waived.

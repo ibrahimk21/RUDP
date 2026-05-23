@@ -72,7 +72,11 @@ def validate_packets(packets: Iterable[dict[str, Any]], tcp_mss: Iterable[int], 
     oversize = [row for row in rows if int(row["ip_bytes"]) > 1500]
     mss_ok = all(value <= 1460 for value in mss)
     if requested_mss is not None:
-        mss_ok = bool(mss) and all(value == requested_mss for value in mss)
+        # TCP_INFO reports the effective data MSS after negotiated TCP options
+        # (for example timestamps), whereas TCP_MAXSEG is the requested cap.
+        # Record the effective value, require that it is bounded by the cap,
+        # and reject values too small to represent that negotiated adjustment.
+        mss_ok = bool(mss) and all(requested_mss - 64 <= value <= requested_mss for value in mss)
     return {"passed": bool(rows) and bool(tcp_packets) and bool(mss) and not oversize and mss_ok, "packets": len(rows), "tcp_packets": len(tcp_packets), "oversize_packets": len(oversize), "maximum_ip_bytes": max((int(row["ip_bytes"]) for row in rows), default=0), "tcp_mss": mss, "requested_mss": requested_mss}
 
 

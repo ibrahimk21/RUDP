@@ -49,7 +49,10 @@ def main() -> int:
     parser.add_argument("output", type=Path)
     parser.add_argument("--profile", required=True)
     parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--rtt-count", type=int, default=100)
+    # Loss profiles must still retain at least 100 successful RTT observations.
+    # Requesting extra probes prevents intentional loss from turning that
+    # requirement into an accidental all-or-nothing gate.
+    parser.add_argument("--rtt-count", type=int, default=150)
     parser.add_argument("--sequence-count", type=int, default=10000)
     args = parser.parse_args()
     names = {role: os.environ.get(f"RUDP_{role.upper()}_NS", "") for role in ("sender", "shaper", "delay", "receiver")}

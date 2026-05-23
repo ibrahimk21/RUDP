@@ -1,5 +1,4 @@
 #include "rudp/benchmark.h"
-#include "rudp/congestion.h"
 #include "rudp/io.h"
 #include "rudp/record.h"
 
@@ -195,11 +194,11 @@ static int run_sender(const char *host, uint16_t data_port, uint16_t control_por
                       uint64_t rate_bps, struct udp_metrics *metrics)
 {
     struct sockaddr_in address;
-    struct rudp_pacer pacer;
     uint8_t control[UDP_REF_CONTROL_SIZE] = {'R', 'D', 'C', '1'};
     uint8_t summary[UDP_REF_SUMMARY_SIZE];
     uint8_t record[UDP_REF_RECORD_SIZE];
-    double packets_per_second = (double)rate_bps / (8.0 * UDP_REF_WIRE_BYTES);
+    uint64_t interval_ns = (UINT64_C(1000000000) * 8U * UDP_REF_WIRE_BYTES) / rate_bps;
+    uint64_t next_send_ns;
     uint64_t id;
     int udp_fd = -1;
     int control_fd = -1;
@@ -218,19 +217,21 @@ static int run_sender(const char *host, uint16_t data_port, uint16_t control_por
     put_u64(control + 4U, count);
     if (rudp_write_all(socket_write, &control_fd, control, sizeof(control)) != 0)
         goto done;
-    rudp_pacer_init(&pacer, monotonic_ms());
+    if (interval_ns == 0U) {
+        errno = ERANGE;
+        goto done;
+    }
+    next_send_ns = monotonic_ns();
     for (id = 0U; id < count; ++id) {
-        uint64_t now;
-        for (;;) {
-            now = monotonic_ms();
-            if (rudp_pacer_take(&pacer, now, packets_per_second, 1000.0, UDP_REF_RECORD_SIZE))
-                break;
-            {
-                uint64_t due = rudp_pacer_next_ms(&pacer, now, packets_per_second, 1000.0,
-                                                  UDP_REF_RECORD_SIZE);
-                int wait_ms = due > now ? (int)(due - now) : 0;
-                (void)poll(NULL, 0U, wait_ms);
-            }
+        struct timespec deadline;
+        next_send_ns += interval_ns;
+        deadline.tv_sec = (time_t)(next_send_ns / UINT64_C(1000000000));
+        deadline.tv_nsec = (long)(next_send_ns % UINT64_C(1000000000));
+        while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, NULL) == EINTR)
+            ;
+        if (monotonic_ns() > next_send_ns + interval_ns * 2U) {
+            /* Never compensate a scheduler stall with an unbounded burst. */
+            next_send_ns = monotonic_ns();
         }
         rudp_record_make(record, id, monotonic_ns());
         if (send(udp_fd, record, sizeof(record), 0) != (ssize_t)sizeof(record))

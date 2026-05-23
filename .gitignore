@@ -16,6 +16,7 @@ __pycache__/
 *.tmp
 /tmp/
 /results/_work/
+/results/wsl-kernel-setup/
 
 # Local editor/OS files
 .vscode/

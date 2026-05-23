@@ -98,7 +98,7 @@ def check_dependencies() -> int:
     if missing:
         print("missing benchmark dependencies: " + ", ".join(missing), file=sys.stderr); return 1
     netem_help = subprocess.run(["tc", "qdisc", "add", "dev", "lo", "root", "netem", "help"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False).stdout
-    if "seed VALUE" not in netem_help:
+    if "seed " not in netem_help.lower():
         print("installed netem lacks reproducible seed support", file=sys.stderr); return 1
     algorithms = Path("/proc/sys/net/ipv4/tcp_available_congestion_control").read_text().split()
     if not {"cubic", "bbr"}.issubset(algorithms):

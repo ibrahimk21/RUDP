@@ -81,7 +81,10 @@ class Topology:
         profile, topology = self.profile, self.config["topology"]
         command = ["tc", "qdisc", "add", "dev", interface, "root", "netem", "limit", str(topology["netem_limit_packets"]), "delay", f"{profile['delay_ms']}ms"]
         if "jitter_ms" in profile:
-            command += [f"{profile['jitter_ms']}ms", "distribution", "uniform"]
+            # netem's jitter without a distribution file is uniform.  Do not
+            # name ``uniform.dist``: several valid iproute2 installations do
+            # not ship that optional file, while the default needs none.
+            command += [f"{profile['jitter_ms']}ms"]
         loss = {"kind": "none"} if self.no_loss else profile["loss"]
         if loss["kind"] == "random":
             command += ["loss", "random", f"{loss['percent']}%", "seed", str(seed)]

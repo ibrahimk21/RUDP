@@ -69,7 +69,11 @@ class Topology:
         self._configure_netem("shaper", "h0", self.reverse_seed)
         for role, interface in (("sender", "s0"), ("receiver", "r0")):
             self.netns(role, "tc", "qdisc", "replace", "dev", interface, "root", "fq")
-        self.netns("sender", "ping", "-c", "1", "-W", "2", "203.0.113.2")
+        # A bootstrap ping only exercises routing.  Under an intentional loss
+        # profile, one dropped ICMP packet is an expected outcome, not a
+        # topology-creation failure; the dedicated calibration collects the
+        # required successful RTT evidence.
+        self.netns("sender", "ping", "-c", "1", "-W", "2", "203.0.113.2", check=False)
 
     def _configure_rate(self, role: str, interface: str, rate: int) -> None:
         topology = self.config["topology"]

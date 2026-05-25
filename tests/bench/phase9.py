@@ -68,6 +68,11 @@ def main() -> int:
     for index, row in enumerate(selected, start=1):
         print(f"[{index}/{len(selected)}] {row['schedule_id']} {row['profile']} {row['workload']} {row['variant']}", flush=True)
         result = subprocess.run(command_for(row, args.experiment), check=False)
+        retained = completed_rows(args.experiment)
+        if row["schedule_id"] not in retained:
+            print(f"harness/topology failure at {row['schedule_id']}: no run row retained",
+                  file=sys.stderr)
+            return result.returncode or 2
         if result.returncode not in (0, 1):
             print(f"harness/topology failure at {row['schedule_id']}: exit {result.returncode}", file=sys.stderr)
             return result.returncode

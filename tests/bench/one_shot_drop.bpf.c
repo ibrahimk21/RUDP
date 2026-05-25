@@ -21,7 +21,7 @@
 
 struct drop_state {
     __u32 tcp_base;
-    __u32 dropped;
+    __u64 dropped;
     __u32 packet_sequence;
     __u32 packet_payload_bytes;
     __u64 dropped_at_ns;

@@ -28,4 +28,6 @@ python3 tests/bench/topology.py --profile terrestrial --forward-seed 305 --rever
 python3 tests/bench/summarize_counters.py "$out/queues.json" "$out/queue-configured.json"
 python3 tests/bench/cleanup_check.py "$out/cleanup.json"
 python3 tests/bench/failure_check.py "$out/intentional-failure.json"
+python3 tests/bench/topology.py --profile terrestrial --no-loss -- \
+    python3 tests/bench/one_shot_drop_smoke.py "$out/one-shot-drop.json"
 python3 tests/bench/preflight_gate.py "$out" "$out/report.json"

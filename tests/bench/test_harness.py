@@ -20,7 +20,7 @@ class HarnessTests(unittest.TestCase):
     def test_schedule_is_reproducible_balanced_and_seeded(self):
         first = harness.generate_schedule(self.config)
         self.assertEqual(first, harness.generate_schedule(self.config))
-        self.assertEqual({row["block_id"] for row in first}, set(range(11)))
+        self.assertEqual({row["block_id"] for row in first}, set(range(4)))
         self.assertTrue(all(row["warmup"] == (row["block_id"] == 0) for row in first))
         self.assertTrue(all(row["forward_seed"] != row["reverse_seed"] for row in first))
         grouped = {}

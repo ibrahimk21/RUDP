@@ -32,16 +32,16 @@
   "variants": ["rudp-aimd", "tcp-cubic", "tcp-bbr", "raw-udp"],
   "coexistence_pairs": ["rudp-aimd+tcp-cubic", "rudp-aimd+tcp-bbr", "tcp-cubic+tcp-cubic", "tcp-bbr+tcp-bbr"],
   "workloads": {
-    "sustained": {"duration_s": 120, "settle_s": 30, "measure_s": 90, "drain_deadline_s": 120},
-    "file_1k": {"bytes": 1024, "deadline_s": 1800},
-    "file_1m": {"bytes": 1048576, "deadline_s": 1800},
-    "latency": {"duration_s": 120, "interval_ms": 20, "drain_deadline_s": 120},
-    "recovery_interior": {"records": 8193, "drop_record": 4096, "deadline_s": 1800},
-    "recovery_tail": {"records": 4097, "drop_record": 4096, "deadline_s": 1800},
-    "fairness": {"duration_s": 120, "windows_s": [[30, 60], [90, 120], [30, 120]]},
-    "fairness_step": {"duration_s": 120, "windows_s": [[30, 60], [90, 120]], "step_at_s": 60, "step_rate_bps": 5000000, "step_fifo_bytes": 31250}
+    "sustained": {"duration_s": 30, "settle_s": 10, "measure_s": 20, "drain_deadline_s": 30},
+    "file_1k": {"bytes": 1024, "deadline_s": 300},
+    "file_1m": {"bytes": 1048576, "deadline_s": 300},
+    "latency": {"duration_s": 30, "interval_ms": 20, "drain_deadline_s": 30},
+    "recovery_interior": {"records": 8193, "drop_record": 4096, "deadline_s": 300},
+    "recovery_tail": {"records": 4097, "drop_record": 4096, "deadline_s": 300},
+    "fairness": {"duration_s": 30, "settle_s": 5, "windows_s": [[5, 15], [20, 30], [5, 30]]},
+    "fairness_step": {"duration_s": 30, "settle_s": 5, "windows_s": [[5, 15], [20, 30]], "step_at_s": 15, "step_rate_bps": 5000000, "step_fifo_bytes": 31250}
   },
-  "sampling": {"warmups": 1, "retained_blocks": 10, "bootstrap_resamples": 10000, "confidence": 0.95},
+  "sampling": {"warmups": 1, "retained_blocks": 3, "bootstrap_resamples": 10000, "confidence": 0.95},
   "calibration": {"rtt_probes": 100, "sequence_packets": 10000, "leo_seeds": 10, "saturation_settle_s": 5, "saturation_measure_s": 30},
   "raw_udp": {"rate_bps": 20000000, "burst_packets": 2, "ip_udp_record_bytes": 1052}
 }

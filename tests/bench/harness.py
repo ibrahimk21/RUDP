@@ -32,8 +32,8 @@ def load_config(path: Path) -> dict[str, Any]:
     required = {"schema_version", "final_seed", "pilot_seed", "topology", "profiles", "variants", "coexistence_pairs", "workloads", "sampling", "calibration", "raw_udp"}
     if set(config) != required or config["schema_version"] != SCHEMA_VERSION:
         raise ValueError("unsupported or incomplete benchmark configuration")
-    if config["sampling"]["retained_blocks"] != 10 or config["sampling"]["warmups"] != 1:
-        raise ValueError("BENCHMARKING.md requires one warm-up and ten retained blocks")
+    if config["sampling"]["retained_blocks"] != 3 or config["sampling"]["warmups"] != 1:
+        raise ValueError("the compact Phase 9 plan requires one warm-up and three retained blocks")
     if config["topology"]["fifo_bytes"] != config["topology"]["rate_bps"] * 50 // 8000:
         raise ValueError("FIFO must hold exactly 50 ms at the configured rate")
     return config

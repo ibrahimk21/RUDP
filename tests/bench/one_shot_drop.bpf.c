@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // Drop exactly the first downstream packet covering one application record.
+// clang-format off
+#include <linux/bpf.h>
 #include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
-#include <linux/bpf.h>
+// clang-format on
 #include <linux/if_ether.h>
 #include <linux/ip.h>
 #include <linux/pkt_cls.h>

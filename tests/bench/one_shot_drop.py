@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import struct
 import subprocess
@@ -44,6 +45,9 @@ def main() -> int:
         if dropped != 1:
             raise SystemExit("controlled loss did not drop exactly one packet")
         return 0
+    if os.geteuid() == 0:
+        run(["modprobe", "sch_ingress"])
+        run(["modprobe", "cls_bpf"])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     obj = args.output.with_suffix(".bpf.o")
     architecture = {"x86_64": "x86", "aarch64": "arm64"}.get(platform.machine(), platform.machine())

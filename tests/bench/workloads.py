@@ -101,11 +101,12 @@ def commands(root: Path, variant: str, workload: str, port: int, input_path: Pat
 
 
 def append_rows(path: Path, fields: list[str], rows: list[dict[str, Any]]) -> None:
-    existing: list[dict[str, Any]] = []
-    if path.exists():
-        with path.open(newline="", encoding="utf-8") as stream:
-            existing = list(csv.DictReader(stream))
-    write_csv(path, fields, [*existing, *rows])
+    # Aggregate artifacts are initialized with headers by harness.py. Append
+    # each completed attempt without truncating prior evidence; this is robust
+    # to transient Windows-mounted-file locks.
+    with path.open("a", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
+        writer.writerows(rows)
 
 
 def endpoint_writable(path: Path) -> None:

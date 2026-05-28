@@ -148,7 +148,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 ## Phase 9 — Baseline data
 
 - [x] Freeze revision/configuration; run RUDP-AIMD, TCP-CUBIC, TCP-BBR and raw UDP under BENCHMARKING.md, including fixed-RTT sweeps and coexistence controls.
-- [ ] Preserve raw/sample/manifests and report all required metrics, uncertainty, failures and overhead. Investigate configuration errors without requiring theory agreement.
+- [x] Preserve raw/sample/manifests and report all required metrics, uncertainty, failures and overhead. Investigate configuration errors without requiring theory agreement.
 
 **Checkpoint:** complete versioned baseline artifacts reproduce tables/graphs; unfavorable or inconclusive results are acceptable.
 

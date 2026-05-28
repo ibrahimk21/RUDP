@@ -1,4 +1,4 @@
-# Phase 8 benchmark harness
+# Phase 9 benchmark harness
 
 `tests/bench/config.json` is the single machine-readable copy of the numerical
 experiment configuration in `BENCHMARKING.md`. Validate it and preview the
@@ -55,10 +55,22 @@ controller. An owned-resource manifest under `results/_work` enables precise
 manual recovery after an uncatchable host failure. Normal exits and signals
 delete only the four namespaces named in that manifest.
 
-The local WSL instance lacks the Phase 8 BBR/netem-seed/CAP_NET_ADMIN gate, so
-configuration, schedules, metrics, schemas, failure preservation, and plots can
-be tested locally, while topology calibration and measurements must run on the
-compatible host described in `docs/environment.md`.
+The compact Phase 9 collection uses one warm-up and three retained blocks. It
+is descriptive rather than a high-power confirmatory study. The completed
+artifact is `results/phase9-compact-20260909-r2`; regenerate its derived output
+without changing the raw rows with:
+
+```sh
+python3 tools/plot_results.py results/phase9-compact-20260909-r2
+python3 tools/phase9_report.py results/phase9-compact-20260909-r2
+```
+
+`REPORT.md` documents outcomes and limitations. In particular, the frozen
+collector did not aggregate bidirectional wire bytes or retransmitted payload
+bytes into `runs.csv`; those overhead fields are N/A, never treated as zero.
+The local full packet captures are retained outside ordinary Git because they
+are too large for repository hosting; the committed records table is losslessly
+compressed and the manifest/counters permit independent audit.
 
 ## Mandatory pre-collection gate
 

@@ -26,6 +26,8 @@ __pycache__/
 /results/phase9-compact-20260909/
 /results/phase9-compact-20260909-r2/logs/
 /results/phase9-compact-20260909-r2/records.csv
+/results/phase10-*/logs/
+/results/phase10-*/records.csv
 /results/*.log
 /results/*.log.err
 /validation/calibration_baseline/

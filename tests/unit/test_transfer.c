@@ -514,11 +514,12 @@ static void test_timed_stream_generator_and_final_digest(void)
     rudp_md5_init(&sink.md5);
     assert(rudp_windowed_receiver_start(pair->receiver, &clock, &receiver_io, &peer, 11U, 22U,
                                         &metadata, &sink_api) == RUDP_TRANSFER_OK);
-    assert(rudp_windowed_sender_start_stream(pair->sender, &clock, &sender_io, &peer, 11U, 22U,
-                                             100U, 20U, RUDP_WINDOW_CAPACITY,
-                                             RUDP_WINDOW_CAPACITY) == RUDP_TRANSFER_OK);
+    assert(rudp_windowed_sender_start_stream_with_cc(
+               pair->sender, &clock, &sender_io, &peer, 11U, 22U, 100U, 20U,
+               RUDP_WINDOW_CAPACITY, RUDP_WINDOW_CAPACITY, RUDP_CC_SAT) == RUDP_TRANSFER_OK);
     transfer_pair_run(pair, 5000U);
     assert(pair->sender->state == RUDP_TRANSFER_COMPLETE);
+    assert(pair->sender->congestion_algorithm == RUDP_CC_SAT);
     assert(sink.finished && sink.records > 0U);
     assert(sink.length == pair->sender->source_length);
     transfer_pair_destroy(pair);

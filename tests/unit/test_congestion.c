@@ -63,12 +63,63 @@ static void test_shared_pacer(void)
     assert(rudp_pacer_take(&pacer, 100U, 10.0, 1000.0, 1024U));
 }
 
+static void fill_sat_ring(struct rudp_aimd_cc *cc)
+{
+    uint32_t sequence;
+
+    for (sequence = 0U; sequence < RUDP_SAT_RING_CAPACITY; ++sequence)
+        rudp_sat_on_original_send(cc, sequence, sequence, RUDP_SAT_RING_CAPACITY, sequence);
+}
+
+static void test_sat_sparse_density_and_duplicate_signals(void)
+{
+    struct rudp_aimd_cc cc;
+    uint32_t sequence;
+
+    rudp_sat_init(&cc, 100U);
+    cc.cwnd = 50.0;
+    fill_sat_ring(&cc);
+    for (sequence = 0U; sequence < 5U; ++sequence)
+        rudp_sat_on_fast_loss(&cc, sequence, 50U, 49U);
+    assert(cc.sat_marked == 5U && cc.cwnd == 50.0 && !cc.in_recovery);
+    rudp_sat_on_fast_loss(&cc, 0U, 50U, 49U);
+    assert(cc.sat_marked == 5U && cc.cwnd == 50.0);
+    rudp_sat_on_fast_loss(&cc, 5U, 50U, 49U);
+    assert(cc.sat_marked == 6U && cc.cwnd == 25.0 && cc.in_recovery);
+    rudp_sat_on_fast_loss(&cc, 5U, 50U, 60U);
+    assert(cc.sat_marked == 6U && cc.recovery_boundary == 49U);
+}
+
+static void test_sat_eviction_recovery_and_timeout(void)
+{
+    struct rudp_aimd_cc cc;
+    uint32_t sequence;
+
+    rudp_sat_init(&cc, 100U);
+    cc.cwnd = 50.0;
+    fill_sat_ring(&cc);
+    rudp_sat_on_original_send(&cc, 50U, 50U, 50U, 50U);
+    rudp_sat_on_fast_loss(&cc, 0U, 50U, 50U);
+    assert(cc.sat_marked == 0U && cc.cwnd == 50.0);
+    for (sequence = 1U; sequence <= 6U; ++sequence)
+        rudp_sat_on_fast_loss(&cc, sequence, 50U, 50U);
+    assert(cc.in_recovery && cc.cwnd == 25.0);
+    rudp_aimd_on_ack(&cc, 1U, 51U);
+    assert(!cc.in_recovery);
+    rudp_sat_on_fast_loss(&cc, 7U, 50U, 51U);
+    assert(cc.in_recovery && cc.cwnd == 25.0);
+    rudp_aimd_on_timeout(&cc, 50U, 52U);
+    assert(cc.cwnd == 1.0 && cc.ssthresh == 25.0 && cc.in_recovery);
+}
+
 int main(void)
 {
     test_ack_accounting_and_small_windows();
     test_loss_episode_and_timeout_restart();
     test_idle_and_credit_limited_behavior();
     test_shared_pacer();
-    puts("AIMD congestion-control and pacing tests passed");
+    test_sat_sparse_density_and_duplicate_signals();
+    test_sat_eviction_recovery_and_timeout();
+    puts("AIMD/Sat congestion-control and pacing tests passed");
     return 0;
 }

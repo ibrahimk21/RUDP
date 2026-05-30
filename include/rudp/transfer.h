@@ -25,6 +25,7 @@ struct rudp_windowed_sender {
     uint8_t digest[16];
     struct rudp_send_scoreboard scoreboard;
     struct rudp_aimd_cc congestion;
+    enum rudp_cc_algorithm congestion_algorithm;
     struct rudp_pacer pacer;
     uint64_t pacing_timer_ms;
     struct rudp_rtt_estimator rtt;
@@ -74,11 +75,23 @@ rudp_windowed_sender_start(struct rudp_windowed_sender *sender, const struct rud
                            size_t source_length, const uint8_t digest[16], uint32_t fixed_window,
                            uint32_t initial_receive_limit);
 enum rudp_transfer_error
+rudp_windowed_sender_start_with_cc(
+    struct rudp_windowed_sender *sender, const struct rudp_clock *clock,
+    const struct rudp_session_io *io, const struct rudp_peer *peer, uint64_t client_nonce,
+    uint64_t server_nonce, const uint8_t *source, size_t source_length, const uint8_t digest[16],
+    uint32_t fixed_window, uint32_t initial_receive_limit, enum rudp_cc_algorithm algorithm);
+enum rudp_transfer_error
 rudp_windowed_sender_start_stream(struct rudp_windowed_sender *sender,
                                   const struct rudp_clock *clock, const struct rudp_session_io *io,
                                   const struct rudp_peer *peer, uint64_t client_nonce,
                                   uint64_t server_nonce, uint64_t duration_ms, uint64_t interval_ms,
                                   uint32_t maximum_window, uint32_t initial_receive_limit);
+enum rudp_transfer_error
+rudp_windowed_sender_start_stream_with_cc(
+    struct rudp_windowed_sender *sender, const struct rudp_clock *clock,
+    const struct rudp_session_io *io, const struct rudp_peer *peer, uint64_t client_nonce,
+    uint64_t server_nonce, uint64_t duration_ms, uint64_t interval_ms, uint32_t maximum_window,
+    uint32_t initial_receive_limit, enum rudp_cc_algorithm algorithm);
 enum rudp_transfer_error rudp_windowed_sender_receive(struct rudp_windowed_sender *sender,
                                                       const struct rudp_packet *packet);
 enum rudp_transfer_error rudp_windowed_sender_tick(struct rudp_windowed_sender *sender);

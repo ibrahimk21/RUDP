@@ -29,8 +29,8 @@
     "geo_capacity_step": {"delay_ms": 300, "loss": {"kind": "none"}, "workload_only": "fairness_step"},
     "calibration_baseline": {"delay_ms": 0, "loss": {"kind": "none"}, "schedule": false}
   },
-  "variants": ["rudp-aimd", "tcp-cubic", "tcp-bbr", "raw-udp"],
-  "coexistence_pairs": ["rudp-aimd+tcp-cubic", "rudp-aimd+tcp-bbr", "tcp-cubic+tcp-cubic", "tcp-bbr+tcp-bbr"],
+  "variants": ["rudp-aimd", "rudp-sat", "tcp-cubic", "tcp-bbr", "raw-udp"],
+  "coexistence_pairs": ["rudp-aimd+tcp-cubic", "rudp-aimd+tcp-bbr", "rudp-sat+tcp-cubic", "rudp-sat+tcp-bbr", "tcp-cubic+tcp-cubic", "tcp-bbr+tcp-bbr"],
   "workloads": {
     "sustained": {"duration_s": 30, "settle_s": 10, "measure_s": 20, "drain_deadline_s": 30},
     "file_1k": {"bytes": 1024, "deadline_s": 300},

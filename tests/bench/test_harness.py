@@ -29,6 +29,8 @@ class HarnessTests(unittest.TestCase):
             grouped.setdefault(key, (row["forward_seed"], row["reverse_seed"]))
             self.assertEqual(grouped[key], (row["forward_seed"], row["reverse_seed"]))
         self.assertFalse(any(row["variant"] == "raw-udp" and row["workload"] != "sustained" for row in first))
+        self.assertTrue(any(row["variant"] == "rudp-sat" for row in first))
+        self.assertTrue(any(row["variant"] == "rudp-sat+tcp-cubic" for row in first))
         self.assertTrue(all("+" in row["variant"] for row in first if row["workload"].startswith("fairness")))
 
     def test_artifact_schema_and_immutability(self):

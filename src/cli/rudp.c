@@ -42,7 +42,13 @@ struct cli_context {
     FILE *records;
     int socket_send_buffer;
     int socket_receive_buffer;
+    enum rudp_cc_algorithm congestion_algorithm;
 };
+
+static const char *congestion_name(enum rudp_cc_algorithm algorithm)
+{
+    return algorithm == RUDP_CC_SAT ? "sat" : "aimd";
+}
 
 static void collect_socket_buffers(struct cli_context *cli)
 {
@@ -235,8 +241,8 @@ static void print_status(const struct cli_context *cli, bool success, const char
         .status = success ? "success" : "failure",
         .stage = stage,
         .error = error,
-        .cc_requested = "aimd",
-        .cc_actual = "aimd",
+        .cc_requested = congestion_name(cli->congestion_algorithm),
+        .cc_actual = congestion_name(cli->congestion_algorithm),
         .bytes = cli->streaming ? (cli->sending && cli->sender != NULL ? cli->sender->source_length
                                                                        : cli->stream_bytes)
                                 : (cli->sending ? cli->source.length : cli->output.length),
@@ -271,16 +277,17 @@ static int start_transfer(struct cli_context *cli, const struct rudp_clock *cloc
         if (cli->sender == NULL)
             return -1;
         if (cli->streaming) {
-            if (rudp_windowed_sender_start_stream(
+            if (rudp_windowed_sender_start_stream_with_cc(
                     cli->sender, clock, io, &cli->session.peer, cli->session.client_nonce,
                     cli->session.server_nonce, cli->stream_duration_ms, cli->stream_interval_ms,
-                    RUDP_WINDOW_CAPACITY, RUDP_INITIAL_RECEIVE_LIMIT) != RUDP_TRANSFER_OK)
+                    RUDP_WINDOW_CAPACITY, RUDP_INITIAL_RECEIVE_LIMIT,
+                    cli->congestion_algorithm) != RUDP_TRANSFER_OK)
                 return -1;
-        } else if (rudp_windowed_sender_start(cli->sender, clock, io, &cli->session.peer,
-                                              cli->session.client_nonce, cli->session.server_nonce,
-                                              cli->source.bytes, cli->source.length,
-                                              cli->source.digest, RUDP_WINDOW_CAPACITY,
-                                              RUDP_INITIAL_RECEIVE_LIMIT) != RUDP_TRANSFER_OK) {
+        } else if (rudp_windowed_sender_start_with_cc(
+                       cli->sender, clock, io, &cli->session.peer, cli->session.client_nonce,
+                       cli->session.server_nonce, cli->source.bytes, cli->source.length,
+                       cli->source.digest, RUDP_WINDOW_CAPACITY, RUDP_INITIAL_RECEIVE_LIMIT,
+                       cli->congestion_algorithm) != RUDP_TRANSFER_OK) {
             return -1;
         }
     } else {
@@ -451,6 +458,13 @@ int main(int argc, char **argv)
     int result;
 
     memset(&cli, 0, sizeof(cli));
+    if (getenv("RUDP_CC") != NULL && strcmp(getenv("RUDP_CC"), "sat") == 0) {
+        cli.congestion_algorithm = RUDP_CC_SAT;
+    } else if (getenv("RUDP_CC") != NULL && strcmp(getenv("RUDP_CC"), "aimd") != 0) {
+        errno = EINVAL;
+        print_status(&cli, false, "initialization", "RUDP_CC must be aimd or sat");
+        return 1;
+    }
     (void)rudp_benchmark_clock_read(&cli.benchmark_start);
     cli.socket.fd = -1;
     cli.output.fd = -1;

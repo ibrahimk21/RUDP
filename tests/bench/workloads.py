@@ -77,7 +77,7 @@ def wait_all(processes: list[subprocess.Popen[bytes]], deadline_s: float) -> boo
 
 def commands(root: Path, variant: str, workload: str, port: int, input_path: Path, output_path: Path, config: dict[str, Any]) -> tuple[list[str], list[str]]:
     host = "203.0.113.2"
-    if variant == "rudp-aimd":
+    if variant in ("rudp-aimd", "rudp-sat"):
         receiver = [str(root / "build" / "rudp"), "receive", str(port), "-" if workload in ("sustained", "latency") else str(output_path)]
         if workload in ("sustained", "latency"):
             sender = [str(root / "build" / "rudp"), "latency" if workload == "latency" else "stream", host, str(port), str(config["workloads"][workload]["duration_s"] * 1000)]
@@ -128,6 +128,8 @@ def run_pair(args: argparse.Namespace, root: Path, config: dict[str, Any]) -> in
     receiver_command, sender_command = commands(root, args.variant, args.workload, args.port, input_path, output_path, config)
     record_path = run_dir / "receiver-records.csv"
     environment = os.environ.copy()
+    if args.variant == "rudp-sat":
+        environment["RUDP_CC"] = "sat"
     if args.workload in ("sustained", "latency") or args.workload.startswith("recovery_"):
         environment["RUDP_RECORDS_CSV"] = str(record_path)
     if "tcp_maxseg" in config["profiles"][args.profile]:
@@ -182,9 +184,12 @@ def run_fairness(args: argparse.Namespace, root: Path, config: dict[str, Any]) -
         port = args.port + index * 10; records = run_dir / f"flow-{index + 1}-records.csv"; records.touch(); os.chown(records, int(os.environ["RUDP_RUN_AS_UID"]), int(os.environ["RUDP_RUN_AS_GID"])); record_paths.append(records)
         receiver_command, sender_command = commands(root, variant, "sustained", port, run_dir / "unused", run_dir / "unused-output", config)
         environment = os.environ.copy(); environment["RUDP_RECORDS_CSV"] = str(records)
+        if variant == "rudp-sat":
+            environment["RUDP_CC"] = "sat"
         processes.append(endpoint(root, os.environ["RUDP_RECEIVER_NS"], receiver_command, run_dir / f"flow-{index + 1}-receiver.log", environment))
         barrier_command = [str(root / "tests" / "bench" / "barrier_exec.py"), str(barrier), f"flow-{index + 1}", "2", "--", *sender_command]
-        sender = endpoint(root, os.environ["RUDP_SENDER_NS"], barrier_command, run_dir / f"flow-{index + 1}-sender.log")
+        sender = endpoint(root, os.environ["RUDP_SENDER_NS"], barrier_command,
+                          run_dir / f"flow-{index + 1}-sender.log", environment)
         senders.append(sender); processes.append(sender)
     t0_ns = time.monotonic_ns(); duration = config["workloads"][args.workload]["duration_s"]
     stepped = False

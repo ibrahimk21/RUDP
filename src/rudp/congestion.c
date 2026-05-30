@@ -36,6 +36,12 @@ void rudp_aimd_init(struct rudp_aimd_cc *cc, uint32_t maximum_window)
     };
 }
 
+void rudp_sat_init(struct rudp_aimd_cc *cc, uint32_t maximum_window)
+{
+    rudp_aimd_init(cc, maximum_window);
+    cc->sat_enabled = true;
+}
+
 uint32_t rudp_aimd_window(const struct rudp_aimd_cc *cc)
 {
     uint32_t window = (uint32_t)cc->cwnd;
@@ -76,6 +82,53 @@ void rudp_aimd_on_fast_loss(struct rudp_aimd_cc *cc, size_t flight, uint32_t bou
     cc->cwnd = cc->ssthresh;
     cc->recovery_boundary = boundary;
     cc->in_recovery = true;
+}
+
+static void sat_reduce_if_dense(struct rudp_aimd_cc *cc, size_t flight, uint32_t boundary)
+{
+    /* The specification deliberately evaluates density only over a full,
+     * bounded history.  Strictly greater than 10% means six marks in 50. */
+    if (cc->sat_occupied == RUDP_SAT_RING_CAPACITY &&
+        cc->sat_marked * 10U > cc->sat_occupied) {
+        rudp_aimd_on_fast_loss(cc, flight, boundary);
+    }
+}
+
+void rudp_sat_on_original_send(struct rudp_aimd_cc *cc, uint32_t sequence, uint64_t now_ms,
+                               size_t flight, uint32_t recovery_boundary)
+{
+    struct rudp_sat_entry *entry;
+
+    rudp_aimd_on_data_send(cc, now_ms);
+    entry = &cc->sat_ring[cc->sat_next];
+    if (entry->occupied && entry->marked_lost) {
+        cc->sat_marked -= 1U;
+    }
+    if (!entry->occupied) {
+        cc->sat_occupied += 1U;
+    }
+    *entry = (struct rudp_sat_entry){.sequence = sequence, .occupied = true, .marked_lost = false};
+    cc->sat_next = (cc->sat_next + 1U) % RUDP_SAT_RING_CAPACITY;
+    sat_reduce_if_dense(cc, flight, recovery_boundary);
+}
+
+void rudp_sat_on_fast_loss(struct rudp_aimd_cc *cc, uint32_t sequence, size_t flight,
+                           uint32_t recovery_boundary)
+{
+    uint32_t index;
+
+    for (index = 0U; index < RUDP_SAT_RING_CAPACITY; ++index) {
+        struct rudp_sat_entry *entry = &cc->sat_ring[index];
+
+        if (entry->occupied && entry->sequence == sequence) {
+            if (!entry->marked_lost) {
+                entry->marked_lost = true;
+                cc->sat_marked += 1U;
+                sat_reduce_if_dense(cc, flight, recovery_boundary);
+            }
+            return;
+        }
+    }
 }
 
 void rudp_aimd_on_timeout(struct rudp_aimd_cc *cc, size_t flight, uint32_t boundary)

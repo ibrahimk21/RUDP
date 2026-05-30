@@ -154,7 +154,7 @@ Both algorithms pace DATA including retransmissions at `1000*cwnd*1024/max(SRTT_
 
 ## Phase 10 — RUDP-Sat evaluation
 
-- [ ] Implement the exact heuristic above; test sparse loss, >10% density, ring eviction, retransmitted/duplicate signals, threshold crossing during recovery and RTO response.
+- [x] Implement the exact heuristic above; test sparse loss, >10% density, ring eviction, retransmitted/duplicate signals, threshold crossing during recovery and RTO response.
 - [ ] Use separately labeled pilot data for any tuning. Freeze parameters before final experiments; rerun AIMD and both TCP baselines alongside Sat in the same randomized blocks, not against old-session numbers alone.
 - [ ] Run every mandatory workload, especially congestion-only/capacity-step coexistence. Report target attainment, failure rate, queue delay and TCP harm; restrict the heuristic to lab use even if solo throughput improves.
 

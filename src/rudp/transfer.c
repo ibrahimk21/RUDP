@@ -49,6 +49,28 @@ static enum rudp_transfer_error sender_send(struct rudp_windowed_sender *sender,
     return RUDP_TRANSFER_OK;
 }
 
+static void congestion_on_original_send(struct rudp_windowed_sender *sender, uint32_t sequence,
+                                        uint64_t now)
+{
+    if (sender->congestion_algorithm == RUDP_CC_SAT) {
+        rudp_sat_on_original_send(&sender->congestion, sequence, now,
+                                  rudp_send_scoreboard_flight(&sender->scoreboard),
+                                  sender->scoreboard.next_sequence - 1U);
+    } else {
+        rudp_aimd_on_data_send(&sender->congestion, now);
+    }
+}
+
+static void congestion_on_fast_loss(struct rudp_windowed_sender *sender, uint32_t sequence,
+                                    size_t flight, uint32_t recovery_boundary)
+{
+    if (sender->congestion_algorithm == RUDP_CC_SAT) {
+        rudp_sat_on_fast_loss(&sender->congestion, sequence, flight, recovery_boundary);
+    } else {
+        rudp_aimd_on_fast_loss(&sender->congestion, flight, recovery_boundary);
+    }
+}
+
 static enum rudp_transfer_error receiver_send(struct rudp_windowed_receiver *receiver,
                                               const struct rudp_packet *packet)
 {
@@ -169,7 +191,7 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
         if (send_data_slot(sender, slot) != RUDP_TRANSFER_OK) {
             return sender->error;
         }
-        rudp_aimd_on_data_send(&sender->congestion, now);
+        congestion_on_original_send(sender, slot->sequence, now);
         if (sender->streaming) {
             rudp_md5_update(&sender->stream_md5, data, length);
             sender->source_length += length;
@@ -195,15 +217,16 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
 }
 
 enum rudp_transfer_error
-rudp_windowed_sender_start_stream(struct rudp_windowed_sender *sender,
+rudp_windowed_sender_start_stream_with_cc(struct rudp_windowed_sender *sender,
                                   const struct rudp_clock *clock, const struct rudp_session_io *io,
                                   const struct rudp_peer *peer, uint64_t client_nonce,
                                   uint64_t server_nonce, uint64_t duration_ms, uint64_t interval_ms,
-                                  uint32_t maximum_window, uint32_t initial_receive_limit)
+                                  uint32_t maximum_window, uint32_t initial_receive_limit,
+                                  enum rudp_cc_algorithm algorithm)
 {
     if (sender == NULL || peer == NULL || !callbacks_valid(clock, io) || duration_ms == 0U ||
         duration_ms >= RUDP_TRANSFER_TIMEOUT_MS || initial_receive_limit == 0U ||
-        initial_receive_limit > RUDP_WINDOW_CAPACITY)
+        initial_receive_limit > RUDP_WINDOW_CAPACITY || algorithm > RUDP_CC_SAT)
         return RUDP_TRANSFER_ERR_ARGUMENT;
     memset(sender, 0, sizeof(*sender));
     sender->state = RUDP_TRANSFER_SENDING;
@@ -214,7 +237,11 @@ rudp_windowed_sender_start_stream(struct rudp_windowed_sender *sender,
     sender->server_nonce = server_nonce;
     sender->streaming = true;
     rudp_send_scoreboard_init(&sender->scoreboard, 0U, initial_receive_limit);
-    rudp_aimd_init(&sender->congestion, maximum_window);
+    sender->congestion_algorithm = algorithm;
+    if (algorithm == RUDP_CC_SAT)
+        rudp_sat_init(&sender->congestion, maximum_window);
+    else
+        rudp_aimd_init(&sender->congestion, maximum_window);
     rudp_rtt_estimator_init(&sender->rtt);
     rudp_md5_init(&sender->stream_md5);
     sender->started_ms = sender_now(sender);
@@ -227,16 +254,17 @@ rudp_windowed_sender_start_stream(struct rudp_windowed_sender *sender,
 }
 
 enum rudp_transfer_error
-rudp_windowed_sender_start(struct rudp_windowed_sender *sender, const struct rudp_clock *clock,
+rudp_windowed_sender_start_with_cc(struct rudp_windowed_sender *sender,
+                           const struct rudp_clock *clock,
                            const struct rudp_session_io *io, const struct rudp_peer *peer,
                            uint64_t client_nonce, uint64_t server_nonce, const uint8_t *source,
                            size_t source_length, const uint8_t digest[16], uint32_t fixed_window,
-                           uint32_t initial_receive_limit)
+                           uint32_t initial_receive_limit, enum rudp_cc_algorithm algorithm)
 {
     if (sender == NULL || peer == NULL || digest == NULL || !callbacks_valid(clock, io) ||
         (source_length != 0U && source == NULL) ||
         (uint64_t)source_length > RUDP_MAX_TRANSFER_LENGTH || initial_receive_limit == 0U ||
-        initial_receive_limit > RUDP_WINDOW_CAPACITY) {
+        initial_receive_limit > RUDP_WINDOW_CAPACITY || algorithm > RUDP_CC_SAT) {
         return RUDP_TRANSFER_ERR_ARGUMENT;
     }
     memset(sender, 0, sizeof(*sender));
@@ -250,12 +278,40 @@ rudp_windowed_sender_start(struct rudp_windowed_sender *sender, const struct rud
     sender->source_length = source_length;
     memcpy(sender->digest, digest, sizeof(sender->digest));
     rudp_send_scoreboard_init(&sender->scoreboard, 0U, initial_receive_limit);
-    rudp_aimd_init(&sender->congestion, fixed_window);
+    sender->congestion_algorithm = algorithm;
+    if (algorithm == RUDP_CC_SAT)
+        rudp_sat_init(&sender->congestion, fixed_window);
+    else
+        rudp_aimd_init(&sender->congestion, fixed_window);
     rudp_rtt_estimator_init(&sender->rtt);
     sender->started_ms = sender_now(sender);
     rudp_pacer_init(&sender->pacer, sender->started_ms);
     sender->progress_deadline_ms = sender->started_ms + RUDP_DATA_PROGRESS_TIMEOUT_MS;
     return sender_fill_window(sender);
+}
+
+enum rudp_transfer_error
+rudp_windowed_sender_start_stream(struct rudp_windowed_sender *sender,
+                                  const struct rudp_clock *clock, const struct rudp_session_io *io,
+                                  const struct rudp_peer *peer, uint64_t client_nonce,
+                                  uint64_t server_nonce, uint64_t duration_ms, uint64_t interval_ms,
+                                  uint32_t maximum_window, uint32_t initial_receive_limit)
+{
+    return rudp_windowed_sender_start_stream_with_cc(
+        sender, clock, io, peer, client_nonce, server_nonce, duration_ms, interval_ms,
+        maximum_window, initial_receive_limit, RUDP_CC_AIMD);
+}
+
+enum rudp_transfer_error
+rudp_windowed_sender_start(struct rudp_windowed_sender *sender, const struct rudp_clock *clock,
+                           const struct rudp_session_io *io, const struct rudp_peer *peer,
+                           uint64_t client_nonce, uint64_t server_nonce, const uint8_t *source,
+                           size_t source_length, const uint8_t digest[16], uint32_t fixed_window,
+                           uint32_t initial_receive_limit)
+{
+    return rudp_windowed_sender_start_with_cc(sender, clock, io, peer, client_nonce, server_nonce,
+                                              source, source_length, digest, fixed_window,
+                                              initial_receive_limit, RUDP_CC_AIMD);
 }
 
 static enum rudp_transfer_error sender_retransmit_fast(struct rudp_windowed_sender *sender,
@@ -276,8 +332,8 @@ static enum rudp_transfer_error sender_retransmit_fast(struct rudp_windowed_send
             break;
         }
         if (!reduced) {
-            rudp_aimd_on_fast_loss(&sender->congestion, pre_ack_flight,
-                                   sender->scoreboard.next_sequence - 1U);
+            congestion_on_fast_loss(sender, slot->sequence, pre_ack_flight,
+                                    sender->scoreboard.next_sequence - 1U);
             reduced = true;
         }
         if (send_data_slot(sender, slot) != RUDP_TRANSFER_OK) {

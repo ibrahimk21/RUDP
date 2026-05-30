@@ -88,8 +88,7 @@ static void sat_reduce_if_dense(struct rudp_aimd_cc *cc, size_t flight, uint32_t
 {
     /* The specification deliberately evaluates density only over a full,
      * bounded history.  Strictly greater than 10% means six marks in 50. */
-    if (cc->sat_occupied == RUDP_SAT_RING_CAPACITY &&
-        cc->sat_marked * 10U > cc->sat_occupied) {
+    if (cc->sat_occupied == RUDP_SAT_RING_CAPACITY && cc->sat_marked * 10U > cc->sat_occupied) {
         rudp_aimd_on_fast_loss(cc, flight, boundary);
     }
 }

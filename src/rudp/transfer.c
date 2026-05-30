@@ -216,13 +216,11 @@ static enum rudp_transfer_error sender_fill_window(struct rudp_windowed_sender *
     return RUDP_TRANSFER_OK;
 }
 
-enum rudp_transfer_error
-rudp_windowed_sender_start_stream_with_cc(struct rudp_windowed_sender *sender,
-                                  const struct rudp_clock *clock, const struct rudp_session_io *io,
-                                  const struct rudp_peer *peer, uint64_t client_nonce,
-                                  uint64_t server_nonce, uint64_t duration_ms, uint64_t interval_ms,
-                                  uint32_t maximum_window, uint32_t initial_receive_limit,
-                                  enum rudp_cc_algorithm algorithm)
+enum rudp_transfer_error rudp_windowed_sender_start_stream_with_cc(
+    struct rudp_windowed_sender *sender, const struct rudp_clock *clock,
+    const struct rudp_session_io *io, const struct rudp_peer *peer, uint64_t client_nonce,
+    uint64_t server_nonce, uint64_t duration_ms, uint64_t interval_ms, uint32_t maximum_window,
+    uint32_t initial_receive_limit, enum rudp_cc_algorithm algorithm)
 {
     if (sender == NULL || peer == NULL || !callbacks_valid(clock, io) || duration_ms == 0U ||
         duration_ms >= RUDP_TRANSFER_TIMEOUT_MS || initial_receive_limit == 0U ||
@@ -253,13 +251,11 @@ rudp_windowed_sender_start_stream_with_cc(struct rudp_windowed_sender *sender,
     return sender_fill_window(sender);
 }
 
-enum rudp_transfer_error
-rudp_windowed_sender_start_with_cc(struct rudp_windowed_sender *sender,
-                           const struct rudp_clock *clock,
-                           const struct rudp_session_io *io, const struct rudp_peer *peer,
-                           uint64_t client_nonce, uint64_t server_nonce, const uint8_t *source,
-                           size_t source_length, const uint8_t digest[16], uint32_t fixed_window,
-                           uint32_t initial_receive_limit, enum rudp_cc_algorithm algorithm)
+enum rudp_transfer_error rudp_windowed_sender_start_with_cc(
+    struct rudp_windowed_sender *sender, const struct rudp_clock *clock,
+    const struct rudp_session_io *io, const struct rudp_peer *peer, uint64_t client_nonce,
+    uint64_t server_nonce, const uint8_t *source, size_t source_length, const uint8_t digest[16],
+    uint32_t fixed_window, uint32_t initial_receive_limit, enum rudp_cc_algorithm algorithm)
 {
     if (sender == NULL || peer == NULL || digest == NULL || !callbacks_valid(clock, io) ||
         (source_length != 0U && source == NULL) ||

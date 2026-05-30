@@ -17,6 +17,21 @@ __pycache__/
 /tmp/
 /results/_work/
 /results/wsl-kernel-setup/
+# Retain failed pilots and complete packet-capture sets locally.  The final
+# evidence package commits lossless rows and selected validation artifacts;
+# these multi-gigabyte captures must not make ordinary Git status/test runs
+# traverse local-only data.
+/results/debug-*/
+/results/phase9-baseline-*/
+/results/phase9-compact-20260909/
+/results/phase9-compact-20260909-r2/logs/
+/results/phase9-compact-20260909-r2/records.csv
+/results/*.log
+/results/*.log.err
+/validation/calibration_baseline/
+/validation/phase9/
+/validation/*.log
+/validation/*.log.err
 
 # Local editor/OS files
 .vscode/

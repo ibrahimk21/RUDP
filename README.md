@@ -1,70 +1,138 @@
-# Reliable Datagram Protocol (RUDP)
+# Reliable Datagram Protocol
 
 [![CI](https://github.com/ibrahimk21/RUDP/actions/workflows/ci.yml/badge.svg)](https://github.com/ibrahimk21/RUDP/actions/workflows/ci.yml)
+[![Language: C11](https://img.shields.io/badge/language-C11-00599C?logo=c&logoColor=white)](https://en.cppreference.com/w/c/11)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)](docs/environment.md)
 
-A reliable, connection-oriented transport protocol built on top of UDP in C11.
-This project explores the core mechanisms behind reliable delivery—without
-reimplementing TCP wholesale—and pairs the implementation with deterministic
-tests, Linux network-emulation tooling, and TCP/UDP reference programs.
+> A reliable, connection-oriented transport protocol built over UDP in C11.
 
-> **Scope:** an educational systems project for controlled Linux environments.
-> It is not encrypted, authenticated, or intended for use on the public
-> Internet.
-
-## Why this project
-
-UDP provides datagrams but leaves ordering, loss recovery, flow control, and
-congestion behavior to the application. RUDP implements those missing transport
-concerns explicitly, making their trade-offs visible in a compact, testable
-codebase.
-
-The project demonstrates systems-programming work across protocol design,
-non-blocking sockets, timer-driven event loops, resource ownership, file I/O,
-fault injection, and reproducible performance experiments.
-
-## How it works
+RUDP is a systems-programming project that makes the machinery behind reliable
+network delivery explicit: session setup, ordered transfer, loss recovery,
+flow control, congestion control, pacing, and verified file publication. It
+pairs the implementation with deterministic tests and a reproducible Linux
+network-emulation harness.
 
 ```text
-application file / generated records
-                |
-                v
-      RUDP transfer layer
-  windows · SACK · retransmission
-  adaptive RTO · AIMD · pacing
-                |
-                v
-      session layer (handshake / close)
-                |
-                v
-       UDP socket + event loop
+UDP is fast and lightweight—but it does not guarantee delivery, ordering,
+congestion behavior, or a safe application-level completion boundary.
+RUDP builds those guarantees deliberately, in a compact C codebase.
 ```
 
-At a high level, a sender and receiver establish a lightweight session using
-nonce-validated control packets. DATA packets carry sequence numbers. The
-receiver acknowledges contiguous data and selectively acknowledges out-of-order
-packets; the sender maintains bounded windows, retransmits lost packets, and
-adapts its retransmission timeout from measured RTT. Receiver-advertised credit
-provides flow control, while AIMD congestion control and token-bucket pacing
-limit how aggressively the sender injects traffic. Completion is verified with
-byte counts and MD5 before the receiver atomically publishes an output file.
+> **Project scope:** designed for controlled Linux environments and learning.
+> RUDP is not encrypted or authenticated and is not intended for public-Internet
+> deployment.
 
-## Highlights
+## At a glance
 
-- C11 implementation with strict warnings, formatting checks, and static analysis.
-- Non-blocking POSIX sockets driven by `poll` and monotonic timers.
-- Ordered, bounded reliable transfer over UDP with a nonce-validated handshake.
-- Sliding windows, receiver flow control, selective acknowledgements (SACK),
-  fast retransmit, exponential backoff, and adaptive retransmission timers.
-- AIMD congestion control and paced sending.
-- Safe file-transfer boundary: source identity checks, MD5 verification, and
-  atomic no-overwrite output commits.
-- Deterministic unit/integration tests and a Linux `ip`/`tc` benchmark harness.
-- TCP and raw-UDP reference implementations for controlled comparisons.
+| | |
+| --- | --- |
+| **Language** | C11 with strict compiler warnings |
+| **Runtime model** | Non-blocking POSIX sockets, `poll`, monotonic timers |
+| **Reliability** | Ordered delivery, retransmission, SACK, adaptive RTO |
+| **Traffic control** | Receiver flow control, AIMD, token-bucket pacing |
+| **File safety** | MD5 verification and atomic no-overwrite commits |
+| **Quality bar** | Unit + integration tests, formatting, static analysis, CI |
+
+## The problem it solves
+
+UDP delivers independent datagrams. An application using it must decide what to
+do when packets arrive late, arrive twice, arrive out of order, or disappear.
+RUDP provides a focused answer to those questions while retaining the visibility
+and message-oriented nature of UDP.
+
+```mermaid
+flowchart LR
+    App[Application<br/>file or generated records] --> Transfer[RUDP transfer layer]
+    Transfer --> Session[Session layer]
+    Session --> Socket[Non-blocking UDP socket]
+    Socket --> Network[(Network)]
+
+    Transfer --- Reliability[Ordered delivery<br/>SACK recovery<br/>adaptive timers]
+    Transfer --- Control[Flow control<br/>AIMD congestion control<br/>pacing]
+    Session --- Lifecycle[Handshake<br/>peer validation<br/>bounded close]
+
+    classDef layer fill:#0d6efd,color:#fff,stroke:#084298
+    classDef capability fill:#e7f1ff,color:#052c65,stroke:#9ec5fe
+    class Transfer,Session,Socket layer
+    class Reliability,Control,Lifecycle capability
+```
+
+## How a transfer works
+
+The sender and receiver first establish a lightweight session. Both sides
+validate nonce-bearing control packets, which binds the session to its peer and
+makes setup retries safe. Data then moves through bounded send and receive
+windows. The receiver reports cumulative progress plus selective acknowledgments
+for packets received out of order; the sender uses that feedback to recover loss
+without needlessly resending data that already arrived.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as Sender
+    participant R as Receiver
+
+    S->>R: SYN (client nonce)
+    R->>S: SYN_ACK (client + server nonce)
+    S->>R: OPEN (both nonces)
+    R->>S: OPEN_ACK
+    Note over S,R: Session established
+
+    S->>R: DATA packets (sequence numbers)
+    R->>S: ACK + advertised receive credit + SACK ranges
+    Note over S: Retransmit loss; adapt RTO;<br/>apply AIMD and pacing
+
+    S->>R: FIN (length + MD5)
+    R->>S: FIN_ACK
+    Note over R: Verify output, then atomically<br/>publish the destination file
+```
+
+### Reliability and control mechanisms
+
+```mermaid
+flowchart TD
+    Data[Send DATA] --> Window{Within send window<br/>and receiver credit?}
+    Window -- No --> Wait[Wait for window update / probe]
+    Wait --> Window
+    Window -- Yes --> Pace[Token-bucket pacer]
+    Pace --> Transit[UDP datagram]
+    Transit --> Ack[ACK / SACK feedback]
+    Ack --> Delivered{Cumulative ACK<br/>advanced?}
+    Delivered -- Yes --> Rtt[Update RTT estimator<br/>and congestion window]
+    Delivered -- No --> Loss{Loss evidence<br/>or timer expiry?}
+    Loss -- No --> Ack
+    Loss -- Yes --> Recover[Fast retransmit or<br/>timeout retransmission]
+    Recover --> Pace
+    Rtt --> Data
+```
+
+- **Sliding windows:** bound memory usage while allowing multiple packets in flight.
+- **Selective acknowledgments (SACK):** identify out-of-order packets that arrived
+  so recovery targets only missing data.
+- **Adaptive retransmission timer:** derives RTO from measured RTT and uses
+  exponential backoff when progress stops.
+- **Flow control:** receiver-advertised credit prevents a fast sender from
+  overrunning receiver buffering.
+- **Congestion control and pacing:** AIMD responds to loss; a shared
+  token-bucket pacer smooths original sends and retransmissions.
+- **Verified completion:** byte count and MD5 must match before the receiver
+  atomically creates the requested output path.
+
+## What this project demonstrates
+
+| Area | Evidence in the codebase |
+| --- | --- |
+| **Protocol design** | Packet codec, nonce-validated state machine, bounded close semantics |
+| **Event-driven systems** | `poll`-driven UDP adapter and injected monotonic clock for deterministic testing |
+| **Algorithmic recovery** | Sliding windows, SACK scoreboard, fast retransmit, adaptive RTO, AIMD |
+| **Defensive I/O** | Checked file reads/writes, source identity checks, atomic no-replace output commit |
+| **Engineering discipline** | Strict warnings, format/lint gates, sanitizers, deterministic unit and live integration tests |
+| **Experimental rigor** | Reproducible `ip`/`tc` topology, fault injection, TCP and raw-UDP reference programs |
 
 ## Quick start
 
-The supported development environment is Ubuntu 24.04, including Ubuntu under
-WSL2. You need a C11 compiler, Make, Python 3, and POSIX sockets.
+The supported environment is Ubuntu 24.04, including Ubuntu under WSL2. You
+need a C11 compiler, Make, Python 3, and POSIX sockets.
 
 ```sh
 git clone https://github.com/ibrahimk21/RUDP.git
@@ -75,9 +143,6 @@ make test
 make integration
 ```
 
-`make test` runs deterministic unit tests. `make integration` runs bounded
-live-socket tests. CI also checks formatting and static analysis on Ubuntu.
-
 ## Try a file transfer
 
 Build the programs, then start the receiver before the sender. The output path
@@ -86,28 +151,30 @@ must not already exist.
 ```sh
 make build
 
-# Terminal 1
+# Terminal 1 — receiver
 ./build/rudp receive 9000 received.bin
 
-# Terminal 2
+# Terminal 2 — sender
 ./build/rudp send 127.0.0.1 9000 source.bin
 ```
 
-Each process emits one JSON status record on exit. Successful transfers validate
-the received length and MD5 digest before making the destination visible.
+Each process emits one JSON status record on exit. A successful transfer proves
+that the destination length and MD5 digest match the sender’s snapshot before
+the output becomes visible.
 
-## Repository guide
+## Repository map
 
-| Path | Purpose |
-| --- | --- |
-| `include/rudp/` | Public protocol and transport interfaces. |
-| `src/rudp/` | Packet codec, session state machine, windows, timers, recovery, and congestion control. |
-| `src/common/` | Shared I/O, file safety, record generation, status, and MD5 support. |
-| `src/cli/` | RUDP file-transfer command-line program. |
-| `src/tcp_ref/`, `src/udp_ref/` | Reference implementations used by experiments. |
-| `tests/` | Unit, integration, and benchmark-harness coverage. |
-| `tools/` | Environment setup, test runner, and benchmark/report utilities. |
-| `docs/` | Design notes and benchmark methodology. |
+```mermaid
+flowchart TB
+    Root[RUDP repository]
+    Root --> Public[include/rudp<br/>public interfaces]
+    Root --> Core[src/rudp<br/>protocol implementation]
+    Root --> Common[src/common<br/>I/O, file, record, MD5 support]
+    Root --> Clients[src/cli · src/tcp_ref · src/udp_ref]
+    Root --> Tests[tests<br/>unit, integration, benchmark harness]
+    Root --> Tools[tools<br/>setup, test, benchmark, reporting]
+    Root --> Docs[docs<br/>design and experiment documentation]
+```
 
 ## Development commands
 

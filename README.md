@@ -80,7 +80,7 @@ sequenceDiagram
 
     S->>R: DATA packets (sequence numbers)
     R->>S: ACK + advertised receive credit + SACK ranges
-    Note over S: Retransmit loss; adapt RTO; apply AIMD and pacing
+    Note over S: Retransmit loss, adapt RTO, apply AIMD and pacing
 
     S->>R: FIN (length + MD5)
     R->>S: FIN_ACK

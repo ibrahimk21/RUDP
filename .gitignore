@@ -19,6 +19,13 @@ temp.txt
 /results/
 /validation/
 
+# Local project notes and planning drafts
+/BENCHMARKING.md
+/PLAN.md
+/TASKS.md
+/MAY_2026_WORK_SCHEDULE.md
+/PROPOSED_IMPROVEMENTS.md
+
 # Local editor/OS files
 .vscode/
 .idea/
